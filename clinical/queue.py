@@ -93,6 +93,29 @@ def alert_burden(clock: str | pd.Timestamp | None = None) -> dict:
     return _burden(frame)
 
 
+READING_COLUMNS = ["patient_id", "ts", "hr", "spo2", "rr", "sbp", "temp_c", "consciousness", "on_oxygen",
+                   "o2_l_min", "source", "signal_quality", "phase", "news2", "news2_max_single",
+                   "artefact", "trend_flag", "symptom_flag", "urgent", "emergency", "plan_breach"]
+_FLAG_COLUMNS = ["trend_flag", "symptom_flag", "urgent", "emergency", "plan_breach"]
+
+
+def readings(pid: str, clock: str | pd.Timestamp) -> pd.DataFrame:
+    """Every reading of `pid` with ts <= clock (any signal quality), sorted by ts, as a new frame.
+
+    Same flags as the queue. Artefact rows carry no flags (all False). Unknown pid -> empty frame.
+    """
+    data = _load()
+    cut = pd.Timestamp(clock)
+    allr = data["all"]
+    allr = allr[(allr["patient_id"] == pid) & (allr["ts"] <= cut)]
+    good = data["good"]
+    good = good[(good["patient_id"] == pid) & (good["ts"] <= cut)]
+    out = allr.merge(good[["ts", *_FLAG_COLUMNS]], on="ts", how="left").sort_values("ts")
+    for col in _FLAG_COLUMNS:
+        out[col] = out[col].fillna(False).astype(bool)
+    return out[READING_COLUMNS].reset_index(drop=True)
+
+
 def get_ward_state(clock: str | pd.Timestamp, escalated: list[str] | None = None) -> WardState:
     """Build the prioritised queue for all virtual-ward patients using only data with ts <= clock."""
     data = _load()

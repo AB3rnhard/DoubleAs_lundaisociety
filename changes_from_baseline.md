@@ -5,7 +5,7 @@ What our actual setup does differently from the planning documents in `Guide and
 and the repo win. Add a line here whenever we deviate again during the day.
 
 Date: 21 Nov 2026. Scope so far: base files (Manual section 2.2, with content from Parts 3-5);
-clinical build A1 (NEWS2) and A2 (artefact, trend, queue) in section 7.
+clinical build A1 (NEWS2), A2 (artefact, trend, queue) and A3 (patient view) in section 7.
 
 ## 1. Repo, branches, machine
 
@@ -116,3 +116,18 @@ Original note:
 | Extra tests | Listed in the prompt | Added: cut-data vs full-data `detect()` equality at every hour (no look-ahead), ARTEFACT reason clears when the next reading is good, artefact excluded from the baseline, symptom window edges (same timestamp counts, 3 h is outside) | Cheap guards for the main risks |
 | Command Center page | Minimal, real data | `st.cache_data` wrapper takes `escalated` as a tuple; shows the suppressed metric, the queue table, the artefact table or "No artefacts". Smoke-tested with `AppTest` only (not in a browser) | Layout and colours come later |
 | Python for ad-hoc commands | Python 3.12 | The default `python` on this laptop is 3.10 without pytest; always use `.\tasks.ps1` or `.venv\Scripts\python.exe` | Venv has the project dependencies |
+
+### A3 - `clinical/views.py`, `queue.readings()`, Patient page
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Plan lines and baseline lines in `vitals_figure` | `add_hline` / `add_hrect` | Drawn as layout shapes (`xN domain` / `yN` refs) instead of `add_hline(row=...)` | The `row=` form took about 800 ms per figure; the page must load in under 1 s |
+| Amber trend markers | "On the rows whose z >= 2.5 if easy" | Done: a trend/symptom marker appears only on rows where that reading's robust z is at least 2.5 | Easy with the cached baselines |
+| `comorbidities` in the header | (type not specified) | List of strings, split on `;`. `custom_rule` and `caregiver_at_home` are `None` when empty | Easier to render; matches "None if empty" |
+| Unknown pid | `readings` returns an empty frame; header not specified | `patient_header` raises `KeyError` | A wrong id should fail loudly in the header |
+| NEWS2 figure window | "24 h up to the clock" | Readings with `ts >= clock - 24 h`, inclusive, so at 21:00 the 21:00 reading from the previous day is a bar | Inclusive boundary; tests compare stream hours only |
+| Selector and deep link | `st.query_params["pid"]` default | An `on_change` callback writes the selection back to `st.query_params["pid"]` | Otherwise the query param overrides the user's selection on every rerun |
+| Reason chips and timeline badges | "Small coloured labels" | Streamlit `:red-badge[...]` / `:orange-badge[...]` / `:gray-badge[...]` markdown, no custom HTML; `$` escaped in note text | Safe and no `unsafe_allow_html`; avoids LaTeX rendering of dollar signs |
+| Page smoke tests | `AppTest.from_file("pages/...")` | Absolute path built from the repo root | Streamlit 1.67 resolves relative paths against the calling test file (`tests/`) |
+| `get_briefing` | Interface in CLAUDE.md | Not added to `views.py` in A3; module docstring says A4 | As instructed in the A3 prompt |
+| First page load | Under 1 s after first load | First Patient render about 3 s in AppTest (cold data load); later renders about 0.07 s; `python -m clinical.views` per-call total about 220 ms | Cold load is the one-off scoring of all readings, shared with the Command Center |
