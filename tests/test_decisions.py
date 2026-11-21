@@ -6,6 +6,7 @@ import json
 import pytest
 
 from ai.factsheet import get_briefing
+from ai.triage import inbox
 from clinical import decisions
 from core import ledger
 from core.contracts import Decision, to_dict
@@ -74,3 +75,38 @@ def test_briefing_decision_item_id_uses_clock_time():
     res = get_briefing("P-002", "2026-11-21T21:00", live=False)
     assert decisions.briefing_decision(res, "approve", "physician", "", "2026-11-21T21:00").item_id == (
         "BRF-P-002-2100")
+
+
+# ---------- A5: nurse replies to inbox messages ----------
+def _item(mid: str = "M-009") -> dict:
+    return next(i for i in inbox("2026-11-21T21:00") if i["message_id"] == mid)
+
+
+def test_message_reply_decision_approve_when_text_equals_draft():
+    item = _item()
+    draft = item["triage"]["triage"]["draft_reply"]
+    d = decisions.message_reply_decision(item, f"  {draft} ", "2026-11-21T13:00")
+    assert (d.ts, d.patient_id, d.item_type, d.item_id) == ("2026-11-21T13:00", "P-002", "message_reply", "RPL-M-009")
+    assert (d.clinician_action, d.clinician_role, d.evidence_ids) == ("approve", "nurse", ["M-009"])
+    shown = json.loads(d.ai_suggestion)
+    assert set(shown) == {"source", "triage"} and shown["triage"]["draft_reply"] == draft
+    assert shown["source"] == item["triage"]["source"]
+
+
+def test_message_reply_decision_edit_stores_the_final_text():
+    d = decisions.message_reply_decision(_item(), "A nurse will call you within the hour.", "2026-11-21T13:00")
+    assert d.clinician_action == "edit"
+    assert d.reason == "A nurse will call you within the hour."
+
+
+def test_replied_message_ids_from_the_pending_file():
+    assert decisions.replied_message_ids() == set()
+    decisions.record_decision(decisions.message_reply_decision(_item("M-009"), "ok, a nurse will call", CLOCK))
+    decisions.record_decision(_decision(1))  # a briefing decision is not a reply
+    assert decisions.replied_message_ids() == {"M-009"}
+
+
+def test_replied_message_ids_from_the_ledger_when_it_can_list(monkeypatch):
+    rows = [decisions.message_reply_decision(_item("M-012"), "text", CLOCK), _decision(1)]
+    monkeypatch.setattr(ledger, "list_decisions", lambda: rows, raising=False)
+    assert decisions.replied_message_ids() == {"M-012"}

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
+from test_triage import fake_output, write_fake_cache  # tests/ is on sys.path (pytest rootdir import mode)
 
 from clinical.artefact import SIGNAL_QUALITY_MIN, artefact_list, is_artefact, split
 from clinical.news2 import score_df
@@ -325,3 +326,73 @@ def test_ward_state_is_fast_and_repeatable():
     elapsed = time.perf_counter() - t
     assert elapsed < 0.3
     assert a == get_ward_state("2026-11-21T17:00")   # cached frames are not mutated between calls
+
+
+# ------------------------------------------------- A5: triage replaces the keywords
+@pytest.fixture
+def tmp_cache(tmp_path, monkeypatch):
+    """An empty AI cache folder, no network. The queue caches are cleared before and after."""
+    from clinical.queue import refresh
+
+    monkeypatch.setenv("DEMO_MODE", "1")
+    monkeypatch.setenv("AI_CACHE_DIR", str(tmp_path / "cache"))
+    refresh()
+    yield tmp_path
+    refresh()
+
+
+def _vw(frame: pd.DataFrame) -> pd.DataFrame:
+    return frame[frame["patient_id"].str.startswith("P-")].reset_index(drop=True)
+
+
+def _check_reference_numbers(d: pd.DataFrame) -> None:
+    p2 = d[d["patient_id"] == "P-002"]
+    assert p2[p2["trend_flag"]]["ts"].min() == P2["reference_trend_flag_first"]
+    assert p2[p2["trend_flag"] | p2["symptom_flag"]]["ts"].min() == P2["reference_flag_with_message_fusion_first"]
+    counts = {pid: int(d[d["patient_id"] == pid]["trend_flag"].sum())
+              for pid in EXP["reference_trend_flags_per_virtual_ward_patient"]}
+    assert counts == EXP["reference_trend_flags_per_virtual_ward_patient"]
+
+
+def test_reference_numbers_hold_with_empty_cache_and_with_fake_triage(tmp_cache, vitals, messages):
+    empty = _vw(detect(vitals, messages))
+    _check_reference_numbers(empty)
+    write_fake_cache()
+    fake = _vw(detect(vitals, messages))
+    _check_reference_numbers(fake)
+    # the fake labels agree with the keywords on this data, so the symptom ids are the same
+    assert empty["symptom_message_ids"].tolist() == fake["symptom_message_ids"].tolist()
+    assert empty["symptom_flag"].tolist() == fake["symptom_flag"].tolist()
+    assert any(ids for ids in fake["symptom_message_ids"])
+
+
+def test_queue_reference_numbers_hold_with_fake_triage(tmp_cache):
+    from clinical.queue import refresh
+
+    write_fake_cache()
+    refresh()
+    p2 = _item(get_ward_state(P2["reference_flag_with_message_fusion_first"]), "P-002")
+    assert "SYMPTOM_MESSAGE" in p2.reasons
+    assert _item(get_ward_state(P2["reference_trend_flag_first"]), "P-002").flagged_at ==         P2["reference_flag_with_message_fusion_first"]
+
+
+def test_triage_decides_not_the_keywords(tmp_cache, vitals, messages):
+    """M-009 contains breathless / shivery keywords, but the cached triage says 'other': no symptom flag."""
+    from clinical.queue import refresh
+
+    other = {**fake_output("M-050"), "category": "other", "urgency": "today", "needs_clinician": False,
+             "symptom_terms": [], "draft_reply": "Thank you for your message. A nurse will reply today."}
+    write_fake_cache({"M-009": other})
+    first = P2["patient_message_first_symptom"]
+    d = _vw(detect(vitals, messages))
+    row = d[(d["patient_id"] == "P-002") & (d["ts"] == first)]
+    assert len(row) == 1
+    assert not bool(row["symptom_flag"].iloc[0]) and row["symptom_message_ids"].iloc[0] == []
+    refresh()
+    assert "SYMPTOM_MESSAGE" not in _item(get_ward_state(first), "P-002").reasons
+
+
+def test_is_symptom_message_uses_keywords_without_an_id_and_with_an_unknown_id(tmp_cache):
+    assert is_symptom_message("I feel breathless")
+    assert is_symptom_message("I feel breathless", "M-UNKNOWN")  # nothing cached: keywords
+    assert not is_symptom_message("What time will the nurse come tomorrow?", "M-001")

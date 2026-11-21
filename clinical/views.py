@@ -225,7 +225,7 @@ def timeline(pid: str, clock: str | pd.Timestamp) -> list[dict]:
     msgs = st_["messages"]
     for m in msgs[(msgs["patient_id"] == pid) & (msgs["ts"] <= cut)].itertuples(index=False):
         items.append({"kind": "message", "id": str(m.message_id), "ts": to_iso(m.ts), "who": str(m.sender),
-                      "text": str(m.text), "symptom": is_symptom_message(m.text)})
+                      "text": str(m.text), "symptom": is_symptom_message(m.text, m.message_id)})
     items.sort(key=lambda x: (x["ts"], x["id"]), reverse=True)
     return items
 

@@ -48,6 +48,24 @@ BRIEFING_SCHEMA = {
     },
 }
 
+# ---------- A5: message triage ----------
+TRIAGE_PROMPT_VERSION = "triage_v1"
+
+TRIAGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["category", "urgency", "symptom_terms", "needs_clinician", "draft_reply"],
+    "properties": {
+        "category": {"type": "string", "enum": ["clinical_symptom", "device_issue", "medication_question",
+                                                "logistics", "discharge_question", "relative_concern",
+                                                "other"]},
+        "urgency": {"type": "string", "enum": ["now", "within_1h", "today", "none"]},
+        "symptom_terms": {"type": "array", "items": {"type": "string"}},
+        "needs_clinician": {"type": "boolean"},
+        "draft_reply": {"type": "string"},
+    },
+}
+
 
 if __name__ == "__main__":
     print("schemas:", [k for k in globals() if k.endswith("_SCHEMA")])

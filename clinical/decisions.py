@@ -6,6 +6,8 @@ Public interface:
     record_decision(decision) -> "ledger" | "pending"
     list_pending() -> list[Decision]               newest first
     briefing_decision(result, action, role, reason, clock) -> Decision
+    message_reply_decision(item, final_text, clock) -> Decision   nurse reply to an inbox item (A5)
+    replied_message_ids() -> set[str]
 
 If core.ledger has a callable `record`, decisions go there. Otherwise one JSON line per decision is
 appended to logs/decisions_pending.jsonl (env DECISIONS_PENDING_PATH overrides). core/ledger.py is
@@ -87,10 +89,41 @@ def briefing_decision(result: dict, action: str, role: str, reason: str, clock: 
     )
 
 
+def message_reply_decision(item: dict, final_text: str, clock: str | pd.Timestamp) -> Decision:
+    """Decision for a nurse reply to one `ai.triage.inbox()` item. Sending only logs it, nothing reaches the patient."""
+    triage = item["triage"]
+    draft = triage["triage"]["draft_reply"]
+    shown = {"source": triage["source"], "triage": triage["triage"]}
+    return Decision(
+        ts=to_iso(pd.Timestamp(clock)),
+        patient_id=item["patient_id"],
+        item_type="message_reply",
+        item_id=f"RPL-{item['message_id']}",
+        ai_suggestion=json.dumps(shown, ensure_ascii=False, separators=(",", ":")),
+        clinician_action="approve" if final_text.strip() == draft.strip() else "edit",
+        clinician_role="nurse",
+        reason=final_text,
+        evidence_ids=[item["message_id"]],
+    )
+
+
+def replied_message_ids() -> set[str]:
+    """Message ids that have a message_reply decision (ledger if it can list, otherwise the pending file)."""
+    lister = getattr(ledger, "list_decisions", None)
+    rows = lister() if callable(lister) else list_pending()
+    return {str(d.item_id).removeprefix("RPL-") for d in rows if d.item_type == "message_reply"}
+
+
 if __name__ == "__main__":
     from ai.factsheet import get_briefing
 
     _res = get_briefing("P-002", "2026-11-21T13:00", live=False)
     _d = briefing_decision(_res, "approve", "physician", "Agree, will call the patient.", "2026-11-21T13:00")
     print({**to_dict(_d), "ai_suggestion": _d.ai_suggestion[:80] + "..."})
+    from ai.triage import inbox
+
+    _item = inbox("2026-11-21T13:00")[0]
+    _r = message_reply_decision(_item, _item["triage"]["triage"]["draft_reply"], "2026-11-21T13:00")
+    print("reply:", _r.item_id, _r.clinician_action, _r.clinician_role, _r.evidence_ids)
+    print("replied ids:", sorted(replied_message_ids()))
     print("target:", "ledger" if callable(getattr(ledger, "record", None)) else f"pending file {_pending_path()}")

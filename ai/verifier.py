@@ -168,7 +168,7 @@ def deterministic_briefing(factsheet: dict) -> dict:
         note = max(factsheet["notes"], key=lambda n: (n["ts"], n["id"]))
         history.append({"text": note["text"], "evidence_ids": [note["id"]]})
     history += [{"text": m["text"], "evidence_ids": [m["id"]]} for m in factsheet["messages"]
-                if is_symptom_message(m["text"])]
+                if is_symptom_message(m["text"], m["id"])]
 
     return {
         "headline": "Rule-based summary: " + (", ".join(reasons) if reasons else "no active flags"),
