@@ -249,22 +249,37 @@ Message: ...`) | A classification warmed with another model is still found. Brie
 
 ### Realignment with Teammate B (open)
 
-- [ ] 1. Decisions: `clinical.decisions.record_decision` switches to `core.ledger.record` automatically once it
+- [x] 1. Decisions: DONE (B5) `core.ledger.import_pending()` / `python -m core.ledger --import-pending` imports the pending file (dedupe, file renamed `.imported-<YYYYmmddHHMM>`, not deleted); the Ledger page also shows not-yet-imported rows marked "pending file". Original note: `clinical.decisions.record_decision` switches to `core.ledger.record` automatically once it
   exists. One-off step after B's ledger lands: import `logs/decisions_pending.jsonl` into the ledger with
   `list_pending()` + `ledger.record()`, then delete the file.
-- [ ] 2. AI cache: lives in `ai/cache/*.json` (committed, so `DEMO_MODE=1` works from `main`; `ledger.db` is
+- [x] 2. AI cache: DONE (B5) decision: the cache stays in `ai/cache`; `core.ledger.cache_get/cache_put` are documented as unused. Original note: lives in `ai/cache/*.json` (committed, so `DEMO_MODE=1` works from `main`; `ledger.db` is
   git-ignored). Decide together whether `core.ledger.cache_get/cache_put` wrap this folder or replace it; either
   way the change is in `_cache_get/_cache_put` (and `cache_drop`) in `ai/claude_client.py` (one `contracts:` commit).
-- [ ] 3. B4 explainer: call `call_json(..., prompt_version="explainer_v1")` and
+- [x] 3. B4 explainer: DONE (B5) `ai.explainer` now uses `ai.verifier.verify` with `{"facts": [...]}`, `call_json(prompt_version=, cache_only=not live)` and the `key|retry` convention; local checker removed. Original note: call `call_json(..., prompt_version="explainer_v1")` and
   `verifier.verify(output, {"facts": [P# facts]})`; no `expected_status`. Evidence needs `id` and `text`.
-- [ ] 4. B5 Ledger page: read decisions from `core.ledger.list_decisions()` and, until item 1 is done, also
+- [x] 4. B5 Ledger page: DONE (B5) `pages/4_Ledger.py` reads ledger + pending rows. Original note: read decisions from `core.ledger.list_decisions()` and, until item 1 is done, also
   `clinical.decisions.list_pending()`. Briefing rows have `item_type="briefing"`, `item_id="BRF-<pid>-<HHMM>"`,
   `ai_suggestion` = JSON with `source`.
 - [ ] 5. Escalation: `st.session_state["escalated"]` is filled by the Patient page form; B3 reads it (no change
   needed, listed for the I1 story check).
-- [ ] 6. B5 Ledger page: reply rows have `item_type="message_reply"`, `item_id="RPL-<message_id>"`,
+- [x] 6. B5 Ledger page: DONE (B5) reply rows are shown (type `message_reply`, reason = text sent). Original note: reply rows have `item_type="message_reply"`, `item_id="RPL-<message_id>"`,
   `clinician_role="nurse"`, `reason` = the text sent; they are in the pending file until item 1 is done.
 - [ ] 7. B5 KPI strip on the Command Center: add it above the existing content; the inbox is one function
   `_inbox_section(clock)` at the end of the page, so the edits do not overlap. B edits A's page only with A's OK.
 - [ ] 8. I2 cache warming: briefing cache keys include the model (A4), triage keys do not. Warm the briefings with
   the model the demo will run with (`CLAUDE_RUNTIME_MODEL`), or the demo falls back to the rule-based summary.
+
+## 11.B Deviations found while building B5 (Ledger page, KPIs, explainer realignment)
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Files | `pages/4_Ledger.py`, `ops/kpis.py`, `core/ledger.py` | Also `ops/ledger_view.py` (pure row merge, formatting, CSV, counters) so the page stays thin and testable | `ops/*` is B's |
+| Pending rows | Id `pending-<n>` | `n` is the 1-based position in `list_pending()` (newest first), so it can change when more rows are added; it is only a display id. Rows already in the ledger (same ts, item_id, action, reason) are hidden from the pending side | Same dedupe key as `import_pending` |
+| Prompt version | `message_reply` rows -> triage constant | Triage constant only when the stored suggestion has `source == "claude"`, `"rule-based"` otherwise (same as briefings) | A keyword fallback did not use the prompt; the ledger should not claim it did |
+| Alert KPI window | "today" | Labelled "since monitoring start"; the counts cover all data up to the clock (`alert_burden(clock)`) | The data window is 84 h, not a day. At 21:00: 58 suppressed (63 -> 5) |
+| Artefacts caught | Count of artefact readings | `len(get_ward_state(clock).artefacts)` (A's `artefact_list` over all virtual-ward readings up to the clock) | Single source of truth |
+| Lead time | Flag vs NEWS2 | First `trend_flag` or `symptom_flag` vs first urgent/emergency reading; P-002 at 21:00: fused 5 h, trend 4 h (match expected_results). At 13:00 the tile shows "flag 12:00, NEWS2 not yet triggered (1 h)" | No look-ahead |
+| KPI strip | Command Center edit | NOT applied (`COMMAND_CENTER_EDIT_ALLOWED = no`); snippet handed over in the B5 report. Realignment item 7 stays open | A owns the page |
+| Sign-off tasks | Approve / Reject on the Ledger page | Reject needs a reason; the task list is replaced (not mutated); a task with a sign-off row already in the ledger is closed without a second row | No duplicates |
+| Explainer realignment | Use `ai.verifier.verify` | `verify` accepts `deterministic_explanation` in all 6 scenarios. Claim granularity is coarser: one claim per plan item / binding constraint plus `decision_needed` (5 claims), instead of one per sentence; the structural checks stay local. With `live=False` the cache is now read (keys `K` and `K\|retry`); a cached invalid draft without a cached retry is shown as "withheld" | `verify` treats a dict with `evidence_ids` as one claim |
+| Explainer tests | Keep B4 tests green | Updated: retry key `\|retry`, `FakeClient` signature (`prompt_version`, `cache_only`), `live=False` is cache-only (was: no call). Removed the two tests of the deleted local checker | Behaviour intentionally changed |
