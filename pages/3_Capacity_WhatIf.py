@@ -3,6 +3,7 @@ import re
 
 import streamlit as st
 
+from ai import explainer
 from clinical.queue import get_ward_state
 from core import ledger, loader
 from core.contracts import PROFILES, Decision, Plan
@@ -68,6 +69,12 @@ def _shadow(clock: str, n: int, esc: tuple[str, ...], profile: str, resource: st
     return whatif_cpsat.shadow_price(n, get_ward_state(clock, list(esc)), profile, resource)
 
 
+@st.cache_data
+def _explain(key: str, _plans: dict, _cap: dict, _shadow: dict, esc: tuple[str, ...], clock: str) -> dict:
+    """Cached on the fact-sheet hash (key), so reruns and clock moves back and forth are instant."""
+    return explainer.explain(_plans, _cap, shadow=_shadow, escalated=esc, clock=clock)
+
+
 def _kpis(cap: dict) -> None:
     beds, slots, kits, visits, pc = (cap["beds"], cap["virtual_slots"], cap["kits"], cap["visits"],
                                      cap["primary_care_handover"])
@@ -85,6 +92,48 @@ def _kpis(cap: dict) -> None:
 
 def _adopted_ids() -> set[str]:
     return {d.item_id for d in ledger.list_decisions(patient_id="WARD", item_type="capacity_plan")}
+
+
+def _verified_line(result: dict | None, profile: str) -> str | None:
+    """one_line of a verified Claude explanation for this profile, else None."""
+    if not result or result["source"] != "claude" or not result["verified"] or result["withheld"]:
+        return None
+    return next((i["one_line"] for i in result["output"]["plans"] if i["profile"] == profile), None)
+
+
+def _chips(ids) -> str:
+    return " ".join(f":gray-badge[{_plain(i)}]" for i in ids)
+
+
+def _explanation(result: dict, cols) -> None:
+    """Render a verified explanation under the plan cards (never called with verified=False)."""
+    out, by_id = result["output"], {f["id"]: f["text"] for f in result["facts"]}
+    if result["source"] == "claude":
+        head = (f":green-badge[{result['n_ok']}/{result['n_checked']} claims verified] "
+                ":gray-badge[AI draft - the bed manager decides]")
+    elif result["withheld"]:
+        head = ":orange-badge[AI draft withheld: failed verification] :gray-badge[Deterministic summary]"
+    else:
+        head = ":gray-badge[Deterministic summary]"
+    st.markdown(f"##### Scenario explanation {head}")
+    items = {i["profile"]: i for i in out["plans"]}
+    for col, profile in zip(cols, PROFILES, strict=True):
+        item = items[profile]
+        with col, st.container(border=True):
+            st.markdown(f"**{PROFILE_TITLES[profile]}**: {_plain(item['one_line'])}")
+            st.markdown("\n".join(f"- {_plain(t)}" for t in item["tradeoffs"]))
+            if item["signoffs"]:
+                st.markdown(" ".join(f":orange-badge[Sign-off: {_plain(x).replace('EXPEDITE_', 'expedite ')}]"
+                                     for x in item["signoffs"]))
+            st.markdown(f"Main risk: {_plain(item['main_risk'])}")
+            st.markdown(_chips(item["evidence_ids"]))
+            with st.expander("Evidence"):
+                for e in item["evidence_ids"]:
+                    st.markdown(f"**{e}**: {_plain(by_id.get(e, ''))}")
+    bc = out["binding_constraint"]
+    st.markdown(f"**Binding constraint: {_plain(bc['resource'].replace('_', ' '))}**. "
+                f"{_plain(bc['explanation'])} {_chips(bc['evidence_ids'])}")
+    st.info(_plain(out["decision_needed"]))
 
 
 def _plan_card(profile: str, plan: Plan, ctx: dict) -> None:
@@ -132,10 +181,15 @@ def _plan_card(profile: str, plan: Plan, ctx: dict) -> None:
         if adopted:
             slot.markdown(":green-badge[Adopted]")
         if st.button("Adopt plan", key=f"cap_adopt_{profile}", disabled=adopted, type="primary"):
+            suggestion, version = plan_summary(plan), None
+            ai_line = _verified_line(ctx.get("explain"), profile)
+            if ai_line:
+                suggestion += f" AI explanation: {ai_line}"
+                version = explainer.PROMPT_VERSION
             ledger.record(Decision(ts=clock, patient_id="WARD", item_type="capacity_plan", item_id=item_id,
-                                   ai_suggestion=plan_summary(plan), clinician_action="approve",
+                                   ai_suggestion=suggestion, clinician_action="approve",
                                    clinician_role=role, reason=reason or "Adopted from what-if",
-                                   evidence_ids=plan_evidence(plan, ctx["elig"])))
+                                   evidence_ids=plan_evidence(plan, ctx["elig"])), prompt_version=version)
             tasks = st.session_state["tasks"]
             have = {t["task_id"] for t in tasks}
             new = [t for t in signoff_tasks(plan, item_id, clock, ctx["elig"]) if t["task_id"] not in have]
@@ -165,6 +219,13 @@ def _what_if(ctx: dict) -> None:
     clock = ctx["clock"]
     with st.spinner("Solving"):
         plans = _plans(clock, int(n), esc)
+    shadow = {p: {r: _shadow(clock, int(n), esc, p, r) for r in ("kits", "beds")} for p in PROFILES}
+    result = None
+    if st.session_state.get("cap_explained"):
+        key = explainer.cache_key_for(explainer.build_factsheet(plans, ctx["cap"], shadow, esc))
+        with st.spinner("Explaining"):
+            result = _explain(key, plans, ctx["cap"], shadow, esc, clock)
+        ctx["explain"] = result
     cols = st.columns(3)
     for col, profile in zip(cols, PROFILES, strict=True):
         with col:
@@ -172,10 +233,16 @@ def _what_if(ctx: dict) -> None:
 
     for resource, noun in (("kits", "monitoring kit"), ("beds", "bed")):
         for profile in PROFILES:
-            extra = _shadow(clock, int(n), esc, profile, resource)
+            extra = shadow[profile][resource]
             if extra > 0:
                 st.info(f"One more {noun} would place {extra} more patient{'s' if extra != 1 else ''} "
                         f"({PROFILE_TITLES[profile]})")
+
+    if st.button("Explain plans", key="cap_explain"):
+        st.session_state["cap_explained"] = True
+        st.rerun()
+    if result is not None and result["verified"]:
+        _explanation(result, st.columns(3))
 
 
 def _eligibility_board(ctx: dict) -> None:
@@ -223,8 +290,6 @@ if escalated:
 tab_whatif, tab_elig = st.tabs(["What-if", "Eligibility board"])
 with tab_whatif:
     _what_if(ctx)
-    with st.container(border=True):
-        st.caption("Scenario explanation (B4)")
     open_tasks = [t for t in st.session_state["tasks"] if t.get("status") == "open"]
     with st.expander(f"Open sign-off tasks ({len(open_tasks)})"):
         if not open_tasks:
