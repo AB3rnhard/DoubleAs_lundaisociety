@@ -1,7 +1,6 @@
 """Tests for ai/explainer.py. Owner: Teammate B. Never calls the real Claude API."""
 import copy
 import dataclasses
-import logging
 import re
 from pathlib import Path
 
@@ -53,9 +52,11 @@ class FakeClient:
     def __init__(self, *outputs):
         self.outputs, self.calls = list(outputs), []
 
-    def __call__(self, system, user, schema, model=None, effort=None, cache_key=None):
+    def __call__(self, system, user, schema, model=None, effort=None, cache_key=None, prompt_version="",
+                 cache_only=False):
         self.calls.append({"system": system, "user": user, "schema": schema, "model": model,
-                           "effort": effort, "cache_key": cache_key})
+                           "effort": effort, "cache_key": cache_key, "prompt_version": prompt_version,
+                           "cache_only": cache_only})
         out = self.outputs[min(len(self.calls), len(self.outputs)) - 1]
         if isinstance(out, Exception):
             raise out
@@ -164,6 +165,7 @@ def test_valid_fake_claude_output_is_verified(monkeypatch, sc):
     assert call["schema"] is EXPLAINER_SCHEMA and call["effort"] == "low" and call["cache_key"] == res["cache_key"]
     assert "Explain the plans." in call["user"] and "P1" in call["user"]
     assert res["prompt_version"] == "explainer_v1"
+    assert call["prompt_version"] == "explainer_v1" and call["cache_only"] is False
 
 
 def _bad_outputs(s):
@@ -198,8 +200,8 @@ def test_invalid_output_retries_once_then_withholds(monkeypatch, sc, case):
     res = run(sc)
     assert len(fake.calls) == 2
     assert "failed verification" in fake.calls[1]["user"] and "- " in fake.calls[1]["user"]
-    assert fake.calls[1]["cache_key"].endswith(":retry1")
-    assert not fake.calls[0]["cache_key"].endswith(":retry1")
+    assert fake.calls[1]["cache_key"].endswith("|retry")
+    assert not fake.calls[0]["cache_key"].endswith("|retry")
     assert res["source"] == "deterministic" and res["withheld"] is True and res["verified"] is True
     assert res["n_ok"] == res["n_checked"] and res["errors"]
 
@@ -251,30 +253,58 @@ def test_client_raises_returns_deterministic(monkeypatch, sc):
     assert len(fake.calls) == 1
 
 
-def test_live_false_makes_no_call(monkeypatch, sc):
-    fake = FakeClient(valid_output(sc))
+def test_live_false_is_cache_only(monkeypatch, sc):
+    from ai.claude_client import CacheMiss
+    fake = FakeClient(CacheMiss("no cached response"))
     install(monkeypatch, fake)
-    assert run(sc, live=False)["source"] == "deterministic" and not fake.calls
+    res = run(sc, live=False)
+    assert res["source"] == "deterministic" and not res["withheld"] and res["verified"]
+    assert len(fake.calls) == 1 and fake.calls[0]["cache_only"] is True
 
 
-def test_local_verifier_used_when_missing(monkeypatch, sc, caplog):
-    import ai.verifier as v
-    monkeypatch.delattr(v, "verify_claims", raising=False)
-    caplog.set_level(logging.INFO, logger="ai.explainer")
-    install(monkeypatch, FakeClient(valid_output(sc)))
-    assert run(sc)["source"] == "claude"
-    assert any("local _verify_claims" in r.message for r in caplog.records)
+def test_cached_valid_answer_under_retry_key_found_when_not_live(monkeypatch, sc):
+    """A cached bad first draft + a cached valid answer under `key|retry` is served with live=False."""
+    store = {}
+    bad, good = _bad_outputs(sc)["unknown id"], valid_output(sc)
+
+    def cached(system, user, schema, model=None, effort=None, cache_key=None, prompt_version="", cache_only=False):
+        assert cache_only
+        if cache_key not in store:
+            from ai.claude_client import CacheMiss
+            raise CacheMiss(cache_key)
+        return copy.deepcopy(store[cache_key])
+
+    key = explainer.cache_key_for(sheet_of(sc))
+    store.update({key: bad, f"{key}|retry": good})
+    install(monkeypatch, cached)
+    res = run(sc, live=False)
+    assert res["source"] == "claude" and res["verified"] and not res["withheld"]
 
 
-def test_local_claim_semantics():
-    facts = {"P1": "Plan: cost 9,500 SEK at 15:00, risk 0.330, I-03 and EXPEDITE_I-02", "P2": "other 7"}
-    ok, errors, n, n_ok = explainer._verify_claims(
-        [{"text": "Costs 9500 SEK at 15:00 with risk 0.33 for I-03, P-005 and A-03", "evidence_ids": ["P1"]},
-         {"text": "At 16:00", "evidence_ids": ["P1"]},
-         {"text": "No ids", "evidence_ids": []},
-         {"text": "Unknown", "evidence_ids": ["P9"]},
-         {"text": "Seven is 7", "evidence_ids": ["P1"]}], facts)
-    assert (n, n_ok, ok) == (5, 1, False) and len(errors) == 4
+def test_cached_bad_draft_without_retry_is_withheld_when_not_live(monkeypatch, sc):
+    from ai.claude_client import CacheMiss
+    fake = FakeClient(_bad_outputs(sc)["number not in facts"], CacheMiss("retry not cached"))
+    install(monkeypatch, fake)
+    res = run(sc, live=False)
+    assert res["source"] == "deterministic" and res["withheld"] is True and len(fake.calls) == 2
+
+
+def test_two_failed_live_attempts_drop_both_cache_keys(monkeypatch, sc):
+    import ai.claude_client as cc
+    dropped = []
+    monkeypatch.setattr(cc, "cache_drop", lambda k: dropped.append(k) or True)
+    install(monkeypatch, FakeClient(_bad_outputs(sc)["unknown id"]))
+    res = run(sc)
+    key = explainer.cache_key_for(sheet_of(sc))
+    assert res["withheld"] and dropped == [key, f"{key}|retry"]
+
+
+def test_verifier_accepts_deterministic_and_reports_counts(scenarios):
+    from ai.verifier import verify
+    for s in scenarios.values():
+        fs = sheet_of(s)
+        r = verify(explainer.deterministic_explanation(s[0], fs), {"facts": fs["facts"]})
+        assert r["ok"] and r["n_ok"] == r["n_checked"] > 0
 
 
 # ------------------------------------------------------------------ hygiene

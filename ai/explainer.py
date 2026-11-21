@@ -3,7 +3,8 @@
 Owner: B (Teammate B). Built in prompt B4.
 
 Public interface: build_factsheet, cache_key_for, explain, deterministic_explanation, verify_output.
-Flow: factsheet -> Claude (if available) -> verify -> one retry with the error list -> deterministic summary.
+Flow: factsheet -> Claude (call_json; cache only when live=False) -> ai.verifier.verify + structure checks ->
+one retry with the error list (cache key `<key>|retry`) -> deterministic summary.
 explain() never raises: on any failure it returns the deterministic explanation.
 """
 from __future__ import annotations
@@ -30,10 +31,6 @@ USAGE_WORDS = {"beds": "beds", "kits": "kits", "visits": "visits", "slots": "vir
 SHADOW_NOUNS = {"kits": "monitoring kit", "beds": "bed"}
 PREFERENCE_RE = re.compile(r"\b(recommend|best option|should (choose|pick|adopt)|we suggest|I suggest)\b",
                            re.IGNORECASE)
-
-_ID_RE = re.compile(r"\b(?:[A-Z]+_)?[A-Z]{1,2}-\d+\b|\bP\d+\b")
-_TIME_RE = re.compile(r"\b\d{1,2}:\d{2}\b")
-_NUM_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 
 
 # ---------------------------------------------------------------- fact sheet
@@ -121,71 +118,6 @@ def cache_key_for(factsheet: dict, model: str | None = None) -> str:
 
 
 # ---------------------------------------------------------------- verification
-def _numbers(text: str) -> tuple[set[str], set[float]]:
-    """(HH:MM tokens, numeric values) after removing id tokens."""
-    text = _ID_RE.sub(" ", text)
-    times = set(_TIME_RE.findall(text))
-    text = _TIME_RE.sub(" ", text)
-    return times, {float(n.replace(",", "")) for n in _NUM_RE.findall(text)}
-
-
-def _verify_claims(claims: list[dict], facts: dict[str, str]) -> tuple[bool, list[str], int, int]:
-    """TEMPORARY local claim check, replaced by ai.verifier.verify_claims after the A4 merge.
-
-    claims: [{"text", "evidence_ids"}]; facts: {id: text}.
-    Rules: every claim cites >= 1 existing id; every number (and HH:MM) in the text appears in a cited fact.
-    Returns (ok, errors, n_checked, n_ok).
-    """
-    errors: list[str] = []
-    n_ok = 0
-    for i, claim in enumerate(claims):
-        text, ids = str(claim.get("text", "")), claim.get("evidence_ids") or []
-        bad: list[str] = []
-        if not ids:
-            bad.append("no evidence_ids")
-        missing = [e for e in ids if e not in facts]
-        if missing:
-            bad.append(f"unknown evidence id(s) {', '.join(map(str, missing))}")
-        if not missing and ids:
-            cited_times: set[str] = set()
-            cited_nums: set[float] = set()
-            for e in ids:
-                t, n = _numbers(facts[e])
-                cited_times |= t
-                cited_nums |= n
-            times, nums = _numbers(text)
-            bad += [f"time {t} not in cited facts" for t in sorted(times - cited_times)]
-            bad += [f"number {n:g} not in cited facts" for n in sorted(nums - cited_nums)]
-        if bad:
-            errors.append(f"claim {i + 1} ({text[:60]!r}): " + "; ".join(bad))
-        else:
-            n_ok += 1
-    return not errors, errors, len(claims), n_ok
-
-
-def _claim_verifier():
-    try:
-        from ai.verifier import verify_claims
-    except ImportError:
-        logger.info("explainer: ai.verifier.verify_claims not available, using local _verify_claims")
-        return _verify_claims
-    logger.info("explainer: using ai.verifier.verify_claims")
-    return verify_claims
-
-
-def _claims(output: dict, factsheet: dict) -> list[dict]:
-    claims = []
-    for item in output["plans"]:
-        ids = item.get("evidence_ids") or []
-        texts = [item.get("one_line", ""), *item.get("tradeoffs", []), item.get("main_risk", "")]
-        claims += [{"text": str(t), "evidence_ids": ids} for t in texts]
-    bc = output["binding_constraint"]
-    claims.append({"text": str(bc.get("explanation", "")), "evidence_ids": bc.get("evidence_ids") or []})
-    # decision_needed has no ids: its numbers may come from anywhere in the fact sheet
-    claims.append({"text": str(output.get("decision_needed", "")), "evidence_ids": list(factsheet["by_id"])})
-    return claims
-
-
 def _structure_errors(output: dict, plans: dict, factsheet: dict) -> list[str]:
     errors: list[str] = []
     items = output["plans"]
@@ -217,23 +149,15 @@ def _structure_errors(output: dict, plans: dict, factsheet: dict) -> list[str]:
 
 
 def verify_output(output, plans: dict, factsheet: dict) -> tuple[bool, list[str], int, int]:
-    """Claim checks + structural checks. Returns (ok, errors, n_checked, n_ok)."""
+    """ai.verifier.verify (claims, numbers, evidence ids) + structural checks. Returns (ok, errors, n_checked, n_ok)."""
+    from ai.verifier import verify
+
     try:
-        claims = _claims(output, factsheet)
-        _ok, errors, n_checked, n_ok = _call_verifier(claims, factsheet["by_id"])
-        errors = [*errors, *_structure_errors(output, plans, factsheet)]
+        res = verify(output, {"facts": factsheet["facts"]})
+        errors = [*res["errors"], *_structure_errors(output, plans, factsheet)]
     except (KeyError, TypeError, AttributeError) as exc:
         return False, [f"malformed output: {type(exc).__name__}: {exc}"], 0, 0
-    return not errors, errors, n_checked, n_ok
-
-
-def _call_verifier(claims: list[dict], by_id: dict) -> tuple[bool, list[str], int, int]:
-    verifier = _claim_verifier()
-    try:
-        return verifier(claims, by_id)
-    except TypeError:
-        logger.warning("explainer: ai.verifier.verify_claims has another signature, using local check")
-        return _verify_claims(claims, by_id)
+    return not errors, errors, res["n_checked"], res["n_ok"]
 
 
 # ---------------------------------------------------------------- deterministic fallback
@@ -317,20 +241,24 @@ def explain(plans: dict, capacity: dict, *, shadow: dict | None = None, escalate
                     ok, withheld, reason, errors)
         return result
 
-    if not live:
-        return fallback("live disabled", False, [])
     call = _client()
     if call is None:
         return fallback("claude_client not available", False, [])
     system, user = _system_prompt(), _user_message(fs, clock)
+    keys = (key, f"{key}|retry")  # A's retry-key convention
     errors: list[str] = []
     try:
         for attempt in range(2):
             msg = user if attempt == 0 else (
                 user + "\n\nYour previous answer failed verification. Fix these errors and answer again:\n"
                 + "\n".join(f"- {e}" for e in errors))
-            output = call(system, msg, EXPLAINER_SCHEMA, model=model, effort="low",
-                          cache_key=key if attempt == 0 else key + ":retry1")
+            try:
+                output = call(system, msg, EXPLAINER_SCHEMA, model=model, effort="low", cache_key=keys[attempt],
+                              prompt_version=PROMPT_VERSION, cache_only=not live)
+            except Exception:
+                if attempt == 1 and errors and not live:
+                    break  # the first cached draft failed verification and there is no cached retry
+                raise
             ok, errors, n_checked, n_ok = verify_output(output, plans, fs)
             logger.info("explainer: claude attempt %d verified=%s %d/%d errors=%s",
                         attempt + 1, ok, n_ok, n_checked, errors)
@@ -340,7 +268,19 @@ def explain(plans: dict, capacity: dict, *, shadow: dict | None = None, escalate
     except Exception as exc:  # noqa: BLE001 - any API / cache-miss failure must fall back
         logger.warning("explainer: claude call failed (%s: %s)", type(exc).__name__, exc)
         return fallback(f"claude call failed: {type(exc).__name__}", False, [])
+    if live:
+        _drop_cached(keys)
     return fallback("claude draft failed verification", True, errors)
+
+
+def _drop_cached(keys) -> None:
+    """After two failed live attempts forget both cached drafts so they are not served again."""
+    try:
+        from ai.claude_client import cache_drop
+        for k in keys:
+            cache_drop(k)
+    except Exception as exc:  # noqa: BLE001 - cache hygiene must never break the page
+        logger.warning("explainer: cache_drop failed (%s)", exc)
 
 
 if __name__ == "__main__":
