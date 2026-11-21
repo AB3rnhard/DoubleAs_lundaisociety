@@ -8,6 +8,7 @@ from clinical.decisions import message_reply_decision, record_decision, replied_
 from clinical.queue import get_ward_state, refresh
 from core.contracts import WardState
 from core.loader import load_patients
+from ops.kpis import command_center_kpis, kpi_tiles
 
 
 @st.cache_data
@@ -15,10 +16,18 @@ def _ward_state(clock: str, escalated: tuple[str, ...]) -> WardState:
     return get_ward_state(clock, list(escalated))
 
 
+@st.cache_data
+def _kpis(clock: str, escalated: tuple[str, ...]) -> list[dict]:
+    return kpi_tiles(command_center_kpis(clock, list(escalated)))
+
+
 state = _ward_state(st.session_state["clock"], tuple(st.session_state["escalated"]))
 
 st.title("Command Center")
 st.write("Clock:", state.clock)
+_tiles = _kpis(st.session_state["clock"], tuple(st.session_state["escalated"]))
+for _col, _t in zip(st.columns(len(_tiles)), _tiles, strict=True):
+    _col.metric(_t["label"], _t["value"], help=_t["help"])
 st.metric("Alerts suppressed", state.suppressed_alerts)
 
 st.dataframe(
