@@ -264,7 +264,7 @@ Message: ...`) | A classification warmed with another model is still found. Brie
   needed, listed for the I1 story check).
 - [x] 6. B5 Ledger page: DONE (B5) reply rows are shown (type `message_reply`, reason = text sent). Original note: reply rows have `item_type="message_reply"`, `item_id="RPL-<message_id>"`,
   `clinician_role="nurse"`, `reason` = the text sent; they are in the pending file until item 1 is done.
-- [ ] 7. B5 KPI strip on the Command Center: add it above the existing content; the inbox is one function
+- [x] 7. B5 KPI strip: DONE (B5, agreed with A) six tiles from `ops.kpis` above the existing metric; nothing else on the page touched. Original note: B5 KPI strip on the Command Center: add it above the existing content; the inbox is one function
   `_inbox_section(clock)` at the end of the page, so the edits do not overlap. B edits A's page only with A's OK.
 - [ ] 8. I2 cache warming: briefing cache keys include the model (A4), triage keys do not. Warm the briefings with
   the model the demo will run with (`CLAUDE_RUNTIME_MODEL`), or the demo falls back to the rule-based summary.
@@ -279,7 +279,7 @@ Message: ...`) | A classification warmed with another model is still found. Brie
 | Alert KPI window | "today" | Labelled "since monitoring start"; the counts cover all data up to the clock (`alert_burden(clock)`) | The data window is 84 h, not a day. At 21:00: 58 suppressed (63 -> 5) |
 | Artefacts caught | Count of artefact readings | `len(get_ward_state(clock).artefacts)` (A's `artefact_list` over all virtual-ward readings up to the clock) | Single source of truth |
 | Lead time | Flag vs NEWS2 | First `trend_flag` or `symptom_flag` vs first urgent/emergency reading; P-002 at 21:00: fused 5 h, trend 4 h (match expected_results). At 13:00 the tile shows "flag 12:00, NEWS2 not yet triggered (1 h)" | No look-ahead |
-| KPI strip | Command Center edit | NOT applied (`COMMAND_CENTER_EDIT_ALLOWED = no`); snippet handed over in the B5 report. Realignment item 7 stays open | A owns the page |
+| KPI strip | Command Center edit | Applied after A agreed, in its own commit; six `st.metric` tiles above the existing metric | A owns the page |
 | Sign-off tasks | Approve / Reject on the Ledger page | Reject needs a reason; the task list is replaced (not mutated); a task with a sign-off row already in the ledger is closed without a second row | No duplicates |
 | Explainer realignment | Use `ai.verifier.verify` | `verify` accepts `deterministic_explanation` in all 6 scenarios. Claim granularity is coarser: one claim per plan item / binding constraint plus `decision_needed` (5 claims), instead of one per sentence; the structural checks stay local. With `live=False` the cache is now read (keys `K` and `K\|retry`); a cached invalid draft without a cached retry is shown as "withheld" | `verify` treats a dict with `evidence_ids` as one claim |
 | Explainer tests | Keep B4 tests green | Updated: retry key `\|retry`, `FakeClient` signature (`prompt_version`, `cache_only`), `live=False` is cache-only (was: no call). Removed the two tests of the deleted local checker | Behaviour intentionally changed |
