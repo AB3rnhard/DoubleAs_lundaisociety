@@ -1,4 +1,4 @@
-"""Clinician decisions on a briefing: bridge to core.ledger until Teammate B's ledger exists.
+"""Clinician decisions on a briefing or a message reply: written to core.ledger.
 
 Owner: A (Teammate A). Built in prompt A4.
 
@@ -9,10 +9,11 @@ Public interface:
     message_reply_decision(item, final_text, clock) -> Decision   nurse reply to an inbox item (A5)
     replied_message_ids() -> set[str]
 
-If core.ledger has a callable `record`, decisions go there. Otherwise one JSON line per decision is
-appended to logs/decisions_pending.jsonl (env DECISIONS_PENDING_PATH overrides). core/ledger.py is
-never edited from here. Once the ledger exists, import the pending file with
-list_pending() + ledger.record() and delete it (see changes_from_baseline.md).
+Decisions go to core.ledger.record. The pending file (logs/decisions_pending.jsonl, env
+DECISIONS_PENDING_PATH overrides) is only a safety fallback, used when core.ledger has no callable
+`record`; it is harmless and normally stays empty. Rows left in it are imported with
+`python -m core.ledger --import-pending` (idempotent; the file is renamed, never deleted).
+`ai_suggestion` is JSON with `source`, `prompt_version` and the shown briefing / triage.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from ai.schemas import BRIEFING_PROMPT_VERSION, TRIAGE_PROMPT_VERSION
 from clinical.artefact import to_iso
 from core import ledger
 from core.contracts import Decision, to_dict
@@ -75,7 +77,7 @@ def briefing_decision(result: dict, action: str, role: str, reason: str, clock: 
     """Decision for the briefing shown (`result` from get_briefing). For "edit", `reason` is the edited text."""
     pid = result["patient_id"]
     cut = pd.Timestamp(clock)
-    shown = {"source": result["source"], "briefing": result["briefing"]}
+    shown = {"source": result["source"], "prompt_version": BRIEFING_PROMPT_VERSION, "briefing": result["briefing"]}
     return Decision(
         ts=to_iso(cut),
         patient_id=pid,
@@ -93,7 +95,7 @@ def message_reply_decision(item: dict, final_text: str, clock: str | pd.Timestam
     """Decision for a nurse reply to one `ai.triage.inbox()` item. Sending only logs it, nothing reaches the patient."""
     triage = item["triage"]
     draft = triage["triage"]["draft_reply"]
-    shown = {"source": triage["source"], "triage": triage["triage"]}
+    shown = {"source": triage["source"], "prompt_version": TRIAGE_PROMPT_VERSION, "triage": triage["triage"]}
     return Decision(
         ts=to_iso(pd.Timestamp(clock)),
         patient_id=item["patient_id"],

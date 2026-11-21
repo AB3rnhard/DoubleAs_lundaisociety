@@ -97,7 +97,7 @@ def _message_card(item: dict, clock: str, replied: set[str], names: dict[str, st
                 st.error("The reply is empty. Write a reply before sending.")
                 return
             where = record_decision(message_reply_decision(item, text.strip(), clock))
-            target = "the ledger" if where == "ledger" else "the pending decisions file (logs/decisions_pending.jsonl)"
+            target = "the ledger" if where == "ledger" else "the pending decisions file (logs/decisions_pending.jsonl), to be imported into the ledger"
             st.success(f"Reply logged in {target}. It was not sent to the patient (prototype).")
 
 
