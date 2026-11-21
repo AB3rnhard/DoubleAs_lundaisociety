@@ -196,3 +196,75 @@ Shadow price of kits under `safety_first` is 1 in both scenarios (README: "the b
 | Page caching | `st.cache_data(_explain(cache_key, ...))` | Plans, capacity and shadow prices are passed as `_`-prefixed args (not hashed); the key is the fact-sheet hash. A transient API failure is cached as the deterministic summary until inputs change or the cache is cleared | Streamlit cannot skip caching conditionally |
 | Explain flow | Click once, then re-render for current inputs | After the first click `cap_explained` stays True, so changing N, clock or escalations calls Claude again (cached per fact sheet) | As specified |
 | Live check | `python -m ai.explainer --live` | Not run: `ai.claude_client` is a stub until A4 merges | Expected |
+
+### A4 - factsheet, verifier, briefing, decisions
+
+Files: `ai/claude_client.py` (shared), `ai/schemas.py`, `ai/prompts/briefing_v1.md`, `ai/factsheet.py`,
+`ai/verifier.py`, `clinical/decisions.py`, `pages/2_Patient.py`, `ai/cache/`, tests. Branch `feat/clinical2`.
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Decisions storage | CLAUDE.md: `core.ledger.record(Decision)` | `clinical/decisions.py` calls `core.ledger.record` if it is callable, otherwise appends one JSON line to `logs/decisions_pending.jsonl` (env `DECISIONS_PENDING_PATH`). `list_pending()` reads it back, newest first | B's `core/ledger.py` is still a stub and is not ours to edit. `logs/` is git-ignored, so the pending file stays on the machine that wrote it |
+| AI cache | `core.ledger.cache_get/cache_put` (CLAUDE.md, `ledger.db`) | One JSON file per key in `ai/cache/` (file name `sha256(key)[:24].json`, env `AI_CACHE_DIR`), behind the private `_cache_get/_cache_put` in `ai/claude_client.py`. Folder is committed | The ledger does not exist yet, and `ledger.db` is git-ignored so `DEMO_MODE=1` would not work from `main` |
+| Briefing status | Pack 3.1 rule 6: the model derives `status` | Rule 6 is "copy the rule-based status given in the user message"; the user message has a `Rule-based status:` line after `Queue reasons`; the verifier rejects any other status | The status must not drift from the queue rules, and the model cannot be wrong about it |
+| No-new-numbers rule | Pack 3.1 rule 2: "Do not compute new numbers" | Rule 2 also says "do not write any number (including durations and counts) that is not in the evidence you cite". The verifier checks every number against the cited items | Durations such as "rising for 5 hours" were the likely failure; they are now rejected |
+| `max_tokens` and thinking | (not specified) | `max_tokens` 4000, effort `"low"`, no `thinking` / `temperature` / prefill; the first `text` block is used | Haiku 5.5 thinks by default, so the response can start with thinking blocks. Live check: about 2.4k output tokens per answer |
+| `get_briefing` location | Prompt Pack: `clinical.views` / `ai.factsheet` | In `ai/factsheet.py`. `clinical/views.py` only got a docstring note | `ai.factsheet` imports `clinical.views.patient_header`; the other direction would be an import cycle |
+| `call_json` | `call_json(system, user, schema, model, cache_key)` | Same plus keyword-only `effort`, `max_tokens`, `prompt_version`, `cache_only`; classes `ClaudeError` and `CacheMiss`; extra public `cache_drop(key)` | `cache_only` backs `live=False`; `cache_drop` lets a failed live run clear its own bad cache entries so the next "Generate briefing" asks Claude again |
+| Retry and cache order | "Retry once when live" | Attempt 1 uses key `K`, attempt 2 uses `K\|retry`. Without `live`, the cache is read for both keys, so a verified retry answer is found again later. After two failures on a live call, both entries are dropped | Otherwise the first (invalid) answer would be cached under `K` and hide the valid retry in demo mode |
+| Verifier scope | Checks listed in the prompt | Schema-agnostic. Evidence = any list of dicts with `id` and `text`. Claims = dicts with `evidence_ids` plus every plain string (headline, `status`, each `missing_information` entry), so a briefing is counted e.g. "30 of 30". Digits glued to letters on either side (`SpO2`, `6h`, `500mg`) are not numbers; doses are matched separately and case-insensitively. A claim with no cited item skips the number check (the id error already fails it) | Reusable by B4; one rule for numbers |
+| Factsheet extras | Fact = `id`, `type`, `ts`, `text` | Some facts carry internal fields (`triggered` on plan facts; `param`, `value_text`, `baseline_text` on deviation facts). They are not sent to Claude and not in the cache key | `deterministic_briefing` must build a briefing from the factsheet alone |
+| Plan facts | One fact per plan rule | Also: "NEWS2 urgent threshold 5 (or any single parameter scoring 3)"; a custom rule is "Plan custom rule (not machine-checked): ..."; "Plan set by ..." is a fact but not a rule. In the rule-based fallback a custom rule is always `not_triggered` and "set by" is skipped | The custom rule is free text and cannot be evaluated by code; the label says so |
+| Vital / artefact facts | `"13:00 HR 96, SpO2 94, RR 20, SBP 124, Temp 37.9, on oxygen no"` | Same plus `, consciousness A`, and `on oxygen yes (2 L/min)` when on oxygen. Window is `clock - 6 h < ts <= clock` (6 hourly readings); artefacts `clock - 24 h < ts` | Consciousness is a schema parameter; the exclusive lower bound gives exactly 6 readings |
+| `deterministic_briefing` | Summary not specified | `summary_points` = the queue fact and the NEWS2-now fact (each cited); `plan_rules` for every rule fact; `relevant_history` = latest note + symptom messages (full text); no actions, nothing missing | A fallback with an empty summary looks broken; it passes `verify` for every patient at 09:00, 13:00 and 21:00 |
+| `Decision` fields | `ts`, `reason`, `evidence_ids` | `ts` = simulation clock (not wall time); `item_id` = `BRF-<pid>-<HHMM>`; `ai_suggestion` = compact JSON `{"source", "briefing"}`; for `edit` the clinician's text is stored in `reason`; `evidence_ids` = sorted unique ids cited in the shown briefing (plain string sort, so F11 comes before F2) | `Decision` has no field for edited text |
+| Patient page | "Generate briefing" calls `live=True` and reruns | The click runs `get_briefing(live=True)` in the same script run (spinner, no `st.rerun`, no extra `st.session_state` key); later runs read it from the cache. Form widget keys are `briefing_*_<pid>_<clock>`, so a new patient or clock gets a fresh form. Edit and Reject need text, otherwise `st.error` and nothing is written. Changes vs baseline is `st.table` (no hover on the evidence column) | Keeps shared state to `clock`, `escalated`, `tasks`; a decision belongs to one briefing |
+| Existing A3 test | "`tests/test_views.py`: add tests only" | `test_patient_page_default_is_top_of_queue` now reads `at.selectbox(key="patient_pid")` instead of asserting `len(at.selectbox) == 1` | The decision form's "Role" select is a second selectbox |
+| Test fixtures | (not specified) | Each test file sets `DEMO_MODE=1`, `AI_CACHE_DIR` and `DECISIONS_PENDING_PATH` to `tmp_path` in its own autouse fixture; no `tests/conftest.py` | `conftest.py` is not on the A4 file list |
+| Live check | One live call for P-002 at 13:00 | `source=claude`, `retried=True`, 30 of 30 claims verified, headline "Rising RR and temperature with new breathlessness and shivering; review needed now". The first answer failed 4 checks (numbers 97, 20, 21, 19 not in the cited evidence), so there were 2 API requests (about 13 s each, 4.0k in / 2.4-2.7k out tokens each). Both answers are in `ai/cache/` (the invalid first one is never shown; it is needed so demo mode finds the retry) | Shows the verifier and retry work on real output |
+| Timings | Page < 1 s after first load | `get_briefing(live=False)` about 10 ms with a cached answer, 3 ms rule-based. Patient page render 0.46 s on the second run in `AppTest`; first render in a fresh process about 10 s (imports of `anthropic`, plotly and the one-off scoring) | A3 measured about 3 s cold; the extra is the new imports |
+
+### A5 - message triage and inbox
+
+Files: `ai/triage.py`, `ai/schemas.py` (append), `ai/prompts/triage_v1.md`, `clinical/trend.py`, `clinical/queue.py`
+(`refresh()`), `clinical/views.py` and `ai/verifier.py` (call sites), `clinical/decisions.py`, `pages/1_Command_Center.py`,
+tests. Branch `feat/clinical2`.
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Symptom rule | Prompt Pack: symptom = `clinical_symptom` | `is_symptom(triage)` is true for `clinical_symptom`, and for `relative_concern` when `needs_clinician` is true | The Prompt Pack expects M-014 (daughter, new confusion) as `relative_concern` with `needs_clinician` true; it must still count as a symptom |
+| Triage cache key | `triage_v1\|message_id\|hash` | The key has no model. The model is stored in the cache entry and shown in the inbox. The hash is over the user message (`Sender: ...
+Message: ...`) | A classification warmed with another model is still found. Briefing keys do contain the model (A4) |
+| Hash and `cached_symptom(message_id, text)` | Signature has no sender | The sender is looked up by `message_id` in `core.loader.load_messages()` (unknown id: "patient") to rebuild the same key | The key hashes the sender, the trend detector only has id and text |
+| Triage inside the trend detector | Replace the keyword match | `is_symptom_message(text, message_id=None)`: with an id it reads the cache only (`ai.triage.cached_symptom`, lazy import, no network) and falls back to `keyword_symptom(text)`. Live triage runs only from the inbox button | Queue, factsheet and the verifier must stay fast and offline; the A2 numbers hold with an empty cache, the fake labels and the warmed cache |
+| Keyword list | `is_symptom_message(text)` | Renamed to `keyword_symptom(text)`; the old name stays with the extra optional argument | Keeps `test_is_symptom_message` and other callers working; one place for the list |
+| `queue.refresh()` | Clears caches that depend on symptoms | Clears `queue._load` and `ai.factsheet._build`. `clinical.views._static` is not cleared (notes, messages and baselines do not use triage) | After live triage the queue above the inbox must use the new classification |
+| Extra prompt rules | Pack 3.3 prompt | Three rules appended: copy symptom words exactly, no number in the draft that is not in the message, `needs_clinician` true for a new or worse symptom (patient or relative) | They are what `check_triage` enforces |
+| `check_triage` | (no triage verifier in the Pack) | Terms must appear in the text (shared 4-letter stem counts), `needs_clinician` true for `clinical_symptom` or urgency `now` / `within_1h`, draft not empty, no dose, no number that is not in the message, "nurse" in the draft when `needs_clinician`. A failing output is never returned | Same guarantee as the briefing verifier |
+| Retry and fallback | Retry once when live | Same as A4: key `K`, then `K\|retry` with the errors appended; cache-only reads both; two failures drop both entries; any error uses `rule_based_triage` | Same pattern as `get_briefing` |
+| Rule-based triage | Keywords as fallback | Keyword match: `clinical_symptom`, `within_1h`, matched stems as terms, nurse will call shortly; otherwise `other`, `today`, nurse will reply today. Passes `check_triage` for every message (tested) | The page always has a safe draft |
+| Inbox location | (B5 KPI strip) | In `pages/1_Command_Center.py`, one function `_inbox_section(clock)` called last. Messages older than 12 h before the clock are in a collapsed expander; the Send button only logs a decision, nothing is sent | B can add the KPI strip above without conflicts |
+| Reply decisions | `message_reply` item type | `item_id` = `RPL-<message_id>`, `clinician_role` "nurse", `reason` = the text sent, `clinician_action` approve (text equals the draft) or edit, `ai_suggestion` = JSON `{"source", "triage"}`, `evidence_ids` = `[message_id]` | `Decision` has no field for the final text |
+| Live triage (section 8) | 15 Haiku calls, table of results | Not run in this session: the agent was not allowed to read the environment for the API key. `ai/cache/` has no triage files yet, so the app uses the keyword fallback until the button is pressed or the cache is warmed | To be done by a human with a key (`DEMO_MODE=0`) |
+
+### Realignment with Teammate B (open)
+
+- [ ] 1. Decisions: `clinical.decisions.record_decision` switches to `core.ledger.record` automatically once it
+  exists. One-off step after B's ledger lands: import `logs/decisions_pending.jsonl` into the ledger with
+  `list_pending()` + `ledger.record()`, then delete the file.
+- [ ] 2. AI cache: lives in `ai/cache/*.json` (committed, so `DEMO_MODE=1` works from `main`; `ledger.db` is
+  git-ignored). Decide together whether `core.ledger.cache_get/cache_put` wrap this folder or replace it; either
+  way the change is in `_cache_get/_cache_put` (and `cache_drop`) in `ai/claude_client.py` (one `contracts:` commit).
+- [ ] 3. B4 explainer: call `call_json(..., prompt_version="explainer_v1")` and
+  `verifier.verify(output, {"facts": [P# facts]})`; no `expected_status`. Evidence needs `id` and `text`.
+- [ ] 4. B5 Ledger page: read decisions from `core.ledger.list_decisions()` and, until item 1 is done, also
+  `clinical.decisions.list_pending()`. Briefing rows have `item_type="briefing"`, `item_id="BRF-<pid>-<HHMM>"`,
+  `ai_suggestion` = JSON with `source`.
+- [ ] 5. Escalation: `st.session_state["escalated"]` is filled by the Patient page form; B3 reads it (no change
+  needed, listed for the I1 story check).
+- [ ] 6. B5 Ledger page: reply rows have `item_type="message_reply"`, `item_id="RPL-<message_id>"`,
+  `clinician_role="nurse"`, `reason` = the text sent; they are in the pending file until item 1 is done.
+- [ ] 7. B5 KPI strip on the Command Center: add it above the existing content; the inbox is one function
+  `_inbox_section(clock)` at the end of the page, so the edits do not overlap. B edits A's page only with A's OK.
+- [ ] 8. I2 cache warming: briefing cache keys include the model (A4), triage keys do not. Warm the briefings with
+  the model the demo will run with (`CLAUDE_RUNTIME_MODEL`), or the demo falls back to the rule-based summary.

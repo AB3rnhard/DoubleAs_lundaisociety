@@ -20,6 +20,11 @@ CLOCK_14 = "2026-11-21T14:00"
 ESC_ID = fake_ward_state().queue[0].patient_id  # same escalated patient as the reference scenario
 
 
+@pytest.fixture(autouse=True)
+def _ai_cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_CACHE_DIR", str(tmp_path / "ai_cache"))  # never write into the repo's ai/cache
+
+
 def _scenario(clock, escalated):
     state = fake_ward_state(clock, list(escalated))
     plans = whatif_cpsat.run_all_profiles(5, state)

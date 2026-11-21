@@ -4,10 +4,12 @@ Every acceptance number comes from core.loader.load_expected_results().
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
 import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from clinical.queue import READING_COLUMNS, get_ward_state, readings
@@ -18,7 +20,8 @@ from clinical.views import (
     virtual_ward_patients,
     vitals_figure,
 )
-from core.loader import load_expected_results, load_notes, load_patients
+from core import ledger
+from core.loader import load_expected_results, load_messages, load_notes, load_patients
 
 EXP = load_expected_results()
 P2 = EXP["P-002"]
@@ -188,6 +191,17 @@ def test_timeline_note_count_matches_loader():
 
 
 # ---------- page smoke tests ----------
+@pytest.fixture(autouse=True)
+def _ai_env(tmp_path, monkeypatch):
+    """No network and no writes outside tmp_path: DEMO_MODE=1, empty AI cache, pending decisions file."""
+    monkeypatch.setenv("DEMO_MODE", "1")
+    monkeypatch.setenv("AI_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("DECISIONS_PENDING_PATH", str(tmp_path / "pending.jsonl"))
+    monkeypatch.setenv("LEDGER_DB", str(tmp_path / "ledger.db"))  # never read the real ledger.db
+    monkeypatch.delattr(ledger, "record", raising=False)
+
+
+
 def _run(page: str, clock: str) -> AppTest:
     at = AppTest.from_file(str(ROOT / page), default_timeout=30)
     at.session_state["clock"] = clock
@@ -207,8 +221,7 @@ def test_patient_page_default_is_top_of_queue():
     clock = f"{DAY}T13:00"
     at = _run("pages/2_Patient.py", clock)
     assert not at.exception
-    assert len(at.selectbox) == 1
-    assert at.selectbox[0].value == get_ward_state(clock).queue[0].patient_id
+    assert at.selectbox(key="patient_pid").value == get_ward_state(clock).queue[0].patient_id
 
 
 def test_patient_page_query_param_deep_link():
@@ -220,3 +233,141 @@ def test_patient_page_query_param_deep_link():
     at.run()
     assert not at.exception
     assert at.selectbox[0].value == "P-001"
+
+
+# ---------- A4: AI briefing and decision form on the Patient page ----------
+def _patient_page(clock: str = f"{DAY}T13:00") -> AppTest:
+    return _run("pages/2_Patient.py", clock)
+
+
+def _texts(at: AppTest) -> str:
+    return " ".join(str(m.value) for m in at.markdown)
+
+
+def _form_key(at: AppTest, prefix: str) -> str:
+    return next(w.key for w in [*at.radio, *at.selectbox, *at.text_area, *at.checkbox]
+                if w.key and w.key.startswith(prefix))
+
+
+def _submit(at: AppTest):
+    return next(b for b in at.button if b.label == "Submit decision")
+
+
+def test_patient_page_shows_rule_based_briefing_with_empty_cache():
+    at = _patient_page()
+    assert not at.exception
+    text = _texts(at)
+    assert "AI briefing" in " ".join(s.value for s in at.subheader)
+    assert "Rule-based summary" in text
+    assert "Needs review now" in text  # P-002 at 13:00: TREND + SYMPTOM_MESSAGE
+    assert ":gray-badge[F" in text  # evidence ids on the items
+    assert any("DEMO_MODE=1" in c.value for c in at.caption)
+
+
+def test_generate_briefing_button_in_demo_mode_does_not_raise():
+    at = _patient_page()
+    at.button(key="briefing_generate").click().run()
+    assert not at.exception
+    assert "Rule-based summary" in _texts(at)  # nothing cached, no live call
+
+
+def test_decision_form_adds_patient_to_escalated_and_writes_pending_file(tmp_path):
+    at = _patient_page()
+    pid = at.selectbox[0].value
+    at.checkbox(key=_form_key(at, "briefing_readmit")).check()
+    _submit(at).click().run()
+    assert not at.exception
+    assert pid in at.session_state["escalated"]
+    assert at.success
+    rows = [json.loads(x) for x in (tmp_path / "pending.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert (rows[0]["patient_id"], rows[0]["item_type"], rows[0]["clinician_action"]) == (
+        pid, "briefing", "approve")
+    assert rows[0]["item_id"] == f"BRF-{pid}-1300"
+
+
+def test_decision_form_no_duplicate_in_escalated_and_escalates_on_reject():
+    at = _patient_page()
+    pid = at.selectbox[0].value
+    at.session_state["escalated"] = [pid]
+    at.radio(key=_form_key(at, "briefing_action")).set_value("Reject")
+    at.text_area(key=_form_key(at, "briefing_text")).set_value("Not convincing")
+    at.checkbox(key=_form_key(at, "briefing_readmit")).check()
+    _submit(at).click().run()
+    assert not at.exception
+    assert at.session_state["escalated"] == [pid]
+
+
+def test_decision_form_edit_without_text_is_refused(tmp_path):
+    at = _patient_page()
+    at.radio(key=_form_key(at, "briefing_action")).set_value("Edit")
+    _submit(at).click().run()
+    assert not at.exception
+    assert at.error and not (tmp_path / "pending.jsonl").exists()
+    assert at.session_state["escalated"] == []
+
+
+# ---------- A5: Inbox on the Command Center ----------
+def _command_center(clock: str) -> AppTest:
+    st.cache_data.clear()  # the page caches inbox(clock); each test has its own AI cache folder
+    return _run("pages/1_Command_Center.py", clock)
+
+
+def _n_messages(clock: str) -> int:
+    m = load_messages()
+    return int((m["ts"] <= pd.Timestamp(clock)).sum())
+
+
+@pytest.mark.parametrize("hour", ["09:00", "12:00", "21:00"])
+def test_command_center_inbox_has_one_reply_box_per_message(hour):
+    clock = f"{DAY}T{hour}"
+    at = _command_center(clock)
+    assert not at.exception
+    boxes = [t for t in at.text_area if t.key and t.key.startswith("inbox_reply_")]
+    assert len(boxes) == _n_messages(clock)
+    assert "Inbox" in [s.value for s in at.subheader]
+    assert any("DEMO_MODE=1" in c.value for c in at.caption)
+    assert at.metric[-1].label == "Messages needing a clinician (not replied)"
+
+
+def test_command_center_older_messages_are_in_a_collapsed_expander():
+    at = _command_center(f"{DAY}T21:00")
+    assert any(e.label.startswith("Older messages") for e in at.expander)
+
+
+def test_command_center_send_reply_writes_one_pending_decision(tmp_path):
+    clock = f"{DAY}T12:00"
+    at = _command_center(clock)
+    newest = load_messages()
+    newest = newest[newest["ts"] <= pd.Timestamp(clock)].sort_values(["ts", "message_id"]).iloc[-1]
+    mid = str(newest["message_id"])
+    at.text_area(key=f"inbox_reply_{mid}").set_value("A nurse will call you shortly, please stay near the phone.")
+    at.button(key=f"inbox_send_{mid}").click().run()
+    assert not at.exception
+    assert at.success and "not sent to the patient" in at.success[0].value
+    rows = [json.loads(x) for x in (tmp_path / "pending.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert (rows[0]["item_type"], rows[0]["item_id"], rows[0]["clinician_role"], rows[0]["clinician_action"]) == (
+        "message_reply", f"RPL-{mid}", "nurse", "edit")
+    assert rows[0]["patient_id"] == str(newest["patient_id"]) and rows[0]["evidence_ids"] == [mid]
+    # the next render shows it as replied and has one reply box fewer
+    st.cache_data.clear()
+    at.run()
+    assert not at.exception
+    assert f"inbox_reply_{mid}" not in [t.key for t in at.text_area]
+    assert any("Replied" in m.value for m in at.markdown)
+
+
+def test_command_center_empty_reply_is_refused_and_nothing_is_written(tmp_path):
+    at = _command_center(f"{DAY}T12:00")
+    at.text_area(key="inbox_reply_M-009").set_value("   ")
+    at.button(key="inbox_send_M-009").click().run()
+    assert not at.exception
+    assert at.error and not (tmp_path / "pending.jsonl").exists()
+
+
+def test_command_center_triage_button_in_demo_mode_does_not_raise():
+    at = _command_center(f"{DAY}T21:00")
+    at.button(key="inbox_triage").click().run()
+    assert not at.exception
+    assert len([t for t in at.text_area if t.key.startswith("inbox_reply_")]) == _n_messages(f"{DAY}T21:00")

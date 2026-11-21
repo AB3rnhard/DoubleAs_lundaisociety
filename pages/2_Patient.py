@@ -1,5 +1,10 @@
+import os
+
+import pandas as pd
 import streamlit as st
 
+from ai.factsheet import get_briefing
+from clinical.decisions import briefing_decision, record_decision
 from clinical.queue import get_ward_state
 from clinical.views import (
     news2_figure,
@@ -53,6 +58,93 @@ def _chip(reason: str) -> str:
 def _plain(text: str) -> str:
     """Escape characters that Streamlit markdown would treat as LaTeX."""
     return text.replace("$", "\\$")
+
+
+STATUS_CHIP = {
+    "needs_review_now": ":red-badge[Needs review now]",
+    "review_today": ":orange-badge[Review today]",
+    "routine": ":gray-badge[Routine]",
+}
+STATE_CHIP = {
+    "triggered": ":red-badge[triggered]",
+    "approaching": ":orange-badge[approaching]",
+    "not_triggered": ":gray-badge[not triggered]",
+}
+ACTIONS = {"Approve": "approve", "Edit": "edit", "Reject": "reject"}
+
+
+def _cited(text: str, ids: list[str], evidence: dict[str, str], prefix: str = "") -> None:
+    """One line of AI text ending with its evidence ids as badges; hovering shows the cited evidence."""
+    badges = " ".join(f":gray-badge[{i}]" for i in ids)
+    tooltip = "  \n".join(f"**{i}**: {_plain(evidence.get(i, ''))}" for i in ids)
+    st.markdown(f"{prefix}{_plain(text)} {badges}", help=tooltip or None)
+
+
+def _render_briefing(res: dict) -> None:
+    b, fs = res["briefing"], res["factsheet"]
+    evidence = {e["id"]: e["text"] for key in ("facts", "notes", "messages") for e in fs[key]}
+
+    chips = [STATUS_CHIP[b["status"]]]
+    if res["source"] == "rule_based":
+        chips.append(":orange-badge[Rule-based summary]")
+    else:
+        chips.append(f":green-badge[{res['checks']['n_ok']} of {res['checks']['n_checked']} claims verified]")
+    st.markdown(" ".join(chips))
+    if res["note"]:
+        st.caption(res["note"])
+    st.markdown(f"**{_plain(b['headline'])}**")
+
+    def bullets(title: str, items: list[tuple[str, list[str]]]) -> None:
+        if items:
+            st.markdown(f"**{title}**")
+            for text, ids in items:
+                _cited(text, ids, evidence, "- ")
+
+    bullets("Summary", [(p["text"], p["evidence_ids"]) for p in b["summary_points"]])
+
+    if b["changes_vs_baseline"]:
+        st.markdown("**Changes vs baseline**")
+        st.table(pd.DataFrame(
+            [{"Parameter": c["parameter"], "Baseline": c["baseline"], "Current": c["current"],
+              "Evidence": ", ".join(c["evidence_ids"])} for c in b["changes_vs_baseline"]]
+        ).set_index("Parameter"))
+
+    if b["plan_rules"]:
+        st.markdown("**Plan rules**")
+        for r in b["plan_rules"]:
+            _cited(r["rule"], r["evidence_ids"], evidence, f"{STATE_CHIP[r['state']]} ")
+
+    bullets("Relevant history", [(h["text"], h["evidence_ids"]) for h in b["relevant_history"]])
+    bullets("Suggested actions (options for the clinician, not decisions)",
+            [(f"{a['action']} - {a['rationale']}", a["evidence_ids"]) for a in b["suggested_actions"]])
+
+    if b["missing_information"]:
+        st.markdown("**Missing information**")
+        for m in b["missing_information"]:
+            st.markdown(f"- {_plain(m)}")
+
+
+def _decision_form(res: dict, pid: str, clock: str) -> None:
+    suffix = f"{pid}_{clock}"  # a decision belongs to one patient at one clock time
+    with st.form(f"briefing_form_{suffix}", clear_on_submit=True):
+        label = st.radio("Decision", list(ACTIONS), horizontal=True, key=f"briefing_action_{suffix}")
+        role = st.selectbox("Role", ["physician", "nurse"], key=f"briefing_role_{suffix}")
+        text = st.text_area("Edited text (for Edit) or reason (for Reject)", key=f"briefing_text_{suffix}")
+        readmit = st.checkbox("Mark possible readmission", key=f"briefing_readmit_{suffix}")
+        submitted = st.form_submit_button("Submit decision")
+    if not submitted:
+        return
+    action = ACTIONS[label]
+    if action != "approve" and not text.strip():
+        st.error("Write the edited text for Edit, or the reason for Reject.")
+        return
+    where = record_decision(briefing_decision(res, action, role, text.strip(), clock))
+    if readmit and pid not in st.session_state["escalated"]:
+        st.session_state["escalated"] = [*st.session_state["escalated"], pid]
+    target = ("the ledger" if where == "ledger"
+              else "the pending decisions file (logs/decisions_pending.jsonl), until the ledger exists")
+    st.success(f"Decision '{action}' by {role} recorded in {target}. "
+               f"Possible readmissions: {', '.join(st.session_state['escalated']) or 'none'}.")
 
 
 def _sync_query_param() -> None:
@@ -117,4 +209,22 @@ for ev in events:
 
 with st.container(border=True):
     st.subheader("AI briefing")
-    st.info("Built in A4: Claude briefing with evidence IDs, verifier, approve / edit / reject.")
+    demo = os.environ.get("DEMO_MODE") == "1"
+    generate = st.button("Generate briefing", key="briefing_generate",
+                         help="Asks Claude for a briefing (cache only when DEMO_MODE=1). "
+                              "Output that fails the verifier is never shown.")
+    if generate:
+        with st.spinner("Asking Claude and verifying the answer..."):
+            res = get_briefing(pid, clock, live=True)
+    else:
+        res = get_briefing(pid, clock, live=False)
+    if demo:
+        st.caption("DEMO_MODE=1: cached briefings only, no live Claude call.")
+    st.caption(f"Source: {res['source']}" + (f" · model {res['model']}" if res["model"] else "")
+               + (" · retried once" if res["retried"] else ""))
+    _render_briefing(res)
+    st.divider()
+    st.markdown("**Clinician decision**")
+    if pid in st.session_state["escalated"]:
+        st.markdown(":red-badge[Marked for possible readmission]")
+    _decision_form(res, pid, clock)

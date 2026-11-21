@@ -9,7 +9,8 @@ Public interface (pure functions, no streamlit; everything uses only data with t
     news2_figure(pid, clock) -> plotly Figure    (NEWS2 bars of the last 24 h)
     timeline(pid, clock) -> list[dict]           (notes and messages, newest first)
 
-get_briefing(pid, clock, live=False) (CLAUDE.md interface) is still to come in A4.
+get_briefing(pid, clock, live=False) (CLAUDE.md interface) lives in ai/factsheet.py (built in A4), not
+here: this module must not import ai.* (import cycle, since ai.factsheet imports patient_header).
 """
 from __future__ import annotations
 
@@ -224,7 +225,7 @@ def timeline(pid: str, clock: str | pd.Timestamp) -> list[dict]:
     msgs = st_["messages"]
     for m in msgs[(msgs["patient_id"] == pid) & (msgs["ts"] <= cut)].itertuples(index=False):
         items.append({"kind": "message", "id": str(m.message_id), "ts": to_iso(m.ts), "who": str(m.sender),
-                      "text": str(m.text), "symptom": is_symptom_message(m.text)})
+                      "text": str(m.text), "symptom": is_symptom_message(m.text, m.message_id)})
     items.sort(key=lambda x: (x["ts"], x["id"]), reverse=True)
     return items
 

@@ -4,6 +4,7 @@ Owner: A (Teammate A). Built in prompt A2.
 
 Public interface: get_ward_state(clock, escalated=None) -> WardState
                   alert_burden(clock=None) -> dict   (naive vs plan-aware alert counts)
+                  refresh() -> None                  (clear caches after the triage cache changed, A5)
 
 Virtual-ward patients only (patient_id starts with "P-"). Everything is computed once on the full
 data (cached, never mutated) and filtered by clock per call, so no row after the clock is used.
@@ -71,6 +72,18 @@ def _load() -> dict:
     good = good.sort_values(["patient_id", "ts"]).reset_index(drop=True)
     logger.info("Loaded %d virtual-ward readings (%d good) for the queue", len(scored), len(good))
     return {"all": scored, "good": good, "patients": sorted(scored["patient_id"].unique())}
+
+
+def refresh() -> None:
+    """Clear the in-process caches that depend on symptom classification (call after the triage cache changed).
+
+    clinical.views._static is not cleared: it holds notes, messages and baselines, none of which use triage.
+    """
+    from ai.factsheet import _build  # lazy: ai.factsheet imports this module
+
+    _load.cache_clear()
+    _build.cache_clear()
+    logger.info("queue and factsheet caches cleared")
 
 
 def _burden(frame: pd.DataFrame) -> dict:

@@ -24,6 +24,7 @@ CLOCK_14 = "2026-11-21T14:00"
 @pytest.fixture(autouse=True)
 def _db(tmp_path, monkeypatch):
     monkeypatch.setenv("LEDGER_DB", str(tmp_path / "t.db"))
+    monkeypatch.setenv("AI_CACHE_DIR", str(tmp_path / "ai_cache"))  # never write into the repo's ai/cache
 
 
 def make(clock=T0, escalated=None) -> AppTest:

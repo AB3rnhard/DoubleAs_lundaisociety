@@ -6,9 +6,12 @@ Personal baseline per patient (good readings from first_ts + 2 h up to first_ts 
 z-scores in the adverse direction afterwards, TREND flag (>= 2 deviating parameters on two
 consecutive good readings) and SYMPTOM flag (>= 1 deviating parameter plus a symptom message in
 the previous 2 h). Artefacts (signal_quality < 0.5) are ignored everywhere.
+Which messages count as symptom messages: A5 triage first (ai.triage.cached_symptom, cache only, never a
+network call), the keyword list below as the fallback when a message has no usable triage.
 
 Public interface (defined in prompt A2, not listed in CLAUDE.md Interfaces):
-    is_symptom_message(text) -> bool
+    keyword_symptom(text) -> bool                 the single place the keyword list lives
+    is_symptom_message(text, message_id=None) -> bool   triage first when message_id is given
     baselines(vitals) -> {pid: {"median", "robust_sd", "window"}}
     detect(vitals, messages) -> DataFrame, one row per good post-baseline reading
     deviations(pid, clock, vitals, messages) -> list[dict]
@@ -40,9 +43,20 @@ DETECT_COLUMNS = ["patient_id", "ts", *[f"z_{p}" for p in PARAMS], "n_dev", "tre
                   "symptom_flag", "symptom_message_ids"]
 
 
-def is_symptom_message(text: str) -> bool:
-    """Keyword check for a symptom message. A5 replaces this with Claude triage; keep it one function."""
+def keyword_symptom(text: str) -> bool:
+    """Keyword check for a symptom message (the fallback when there is no triage)."""
     return bool(SYMPTOM_PATTERN.search(str(text)))
+
+
+def is_symptom_message(text: str, message_id: str | None = None) -> bool:
+    """Symptom message? With a `message_id`: the cached Claude triage when there is a valid one, else keywords."""
+    if message_id is not None:
+        from ai.triage import cached_symptom  # lazy: ai.triage imports this module
+
+        triaged = cached_symptom(str(message_id), str(text))
+        if triaged is not None:
+            return triaged
+    return keyword_symptom(text)
 
 
 def _norm(vitals: pd.DataFrame) -> pd.DataFrame:
@@ -111,7 +125,7 @@ def _symptom_messages(messages: pd.DataFrame) -> dict[str, list[tuple[pd.Timesta
     m = messages.copy()
     m["ts"] = pd.to_datetime(m["ts"])
     for r in m.sort_values(["ts", "message_id"]).itertuples(index=False):
-        if is_symptom_message(r.text):
+        if is_symptom_message(r.text, r.message_id):
             out.setdefault(str(r.patient_id), []).append((r.ts, str(r.message_id)))
     return out
 
