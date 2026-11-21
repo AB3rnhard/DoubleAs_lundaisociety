@@ -96,3 +96,22 @@ Date: 21 Nov 2026. Scope so far: base files (Manual section 2.2, with content fr
 Contract expected from A's `clinical.news2.score_df(vitals, plans)`: input columns
 `patient_id, ts, hr, spo2, rr, sbp, temp_c, consciousness, on_oxygen, signal_quality` and plan columns
 `patient_id, spo2_scale`; output = same rows plus int columns `news2` and `news2_max_single`.
+
+## 8. Deviations found while building B2 (ops/whatif_*, ops/greedy)
+
+| Area | Prompt said | Actual | Why |
+|---|---|---|---|
+| Signature | Prompt Pack: `run_whatif(n, ward_state, profile, escalated=[])` | `run_whatif(n, ward_state, profile)`; escalated patients come from `ward_state.escalated` | Follows CLAUDE.md / `core/contracts.py` |
+| New module | Pack lists only `whatif_cpsat.py` and `greedy.py` | Added `ops/whatif_model.py`: `build_inputs`, `evaluate_plan` (plain-Python checker of every rule), `make_plan`, `Decisions`, `WhatIfInputs` | Shared by both solvers and the tests; the checker post-checks every CP-SAT result |
+| Extra public functions | `run_whatif`, `shadow_price` | Also `run_all_profiles(n, ward_state)` (builds inputs once, solves 3x) and `solve_inputs(inputs, profile)` in both solver modules | Keeps the 3-profile view under 2 s |
+| `shadow_price` | `resource="kits"` | Supports `"kits"` and `"beds"`; other values raise `ValueError`. Returns placed(+1 unit) minus placed(baseline) | As specified in the B2 task |
+| Formulation source | Pack text | Ported from the brute-force reference in `scripts/generate_datapack.py` (read, never imported); overflow only counts if actually filled; escalated patients release slot, visits and kit | These semantics are what make the expected numbers match |
+| CP-SAT result | "Require OPTIMAL" | OPTIMAL required in practice; FEASIBLE is returned with a warning; INFEASIBLE or missing `ortools` falls back to `greedy.solve_inputs` (plan `solver="greedy"`) | Per task |
+| Greedy quality | "feasible heuristic" | Always feasible (all-external baseline + home-first/beds-first construction + prune). Matches CP-SAT in 4 of 6 reference cases; worse on `max_capacity` (-0.20 vs -1.15; 5.75 vs -0.20) | Fallback only; not tuned |
+| Planned discharge already due | Not specified | If `planned_discharge_at <= clock` the bed counts as free (logged); only future discharges are expedite candidates | Task rule |
+| Unknown escalated id | Not specified | Ids that are not virtual-ward patients are ignored with a warning; `needing_placement = n + valid escalated` | Avoids a crash |
+| No-patient-specific-logic test | Regex finds no `"P-/I-/A-` + digit | Applied to the whole of `whatif_model.py`, `whatif_cpsat.py`, `greedy.py` (including `__main__`, which takes the readmitted id from `fake_ward_state().queue[0]`) | Stricter than B1 |
+| Reference mismatches | Stop and report if any | None: all 6 objectives and plans match `expected_results.json`; at 14:00 with P-002 readmitted the counts match the README story (5/6, 6/6, 6/6 + 1 spare) | - |
+
+Shadow price of kits under `safety_first` is 1 in both scenarios (README: "the binding constraint is monitoring kits").
+`run_all_profiles(5, ...)` takes about 0.1-0.6 s. `fake_ward_state` defaults to clock 13:00, so tests always pass the clock.
