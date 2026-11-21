@@ -329,3 +329,13 @@ Still open for I2: warm the P-002 13:00 briefing, triage up to 14:00 and the 14:
 | Census tiles | Two tiles in the KPI strip | `Patients at home` and `Virtual slots used` from `get_capacity()["virtual_slots"]` (static `resources.json`; a possible readmission stays counted). 8 tiles, two rows of 4 | Same numbers as Admission Planning |
 | Hospital overview | Table of the 12 inpatients | `ops.kpis.inpatient_overview` reuses `ops.eligibility` (NEWS2 24 h, home-care status and reasons, transfer risk); no new scoring. New section on the dashboard, above the Inbox | Keeps one source of truth |
 | Not done | - | Guides and the demo script still use the old page names. The Prompt Pack's "D0" (data pack regeneration) is a different prompt. Lean version has no UI tests for the Patient page heading, the readmission line, the sort order and the planned-discharge format (check in the browser) | Time box |
+
+## 15. Refinement D1 - inpatient profiles, readmission risk, incoming 24 h (21 Nov 2026)
+
+| Area | Request | Actual | Why |
+|---|---|---|---|
+| Branch / ownership | Edit files of A and B and shared `app.py` | Ran directly on `main` by the user's decision; the Patient page is renamed "Patients" (title strings only, file names and widget keys unchanged) | Small cross-cutting refinement |
+| Inpatient sheets | Same sheet as home patients | Inpatient readings via `queue.readings` (`_load_inpatients`, `inpatient_item`); no trend, no baseline band, no readmission checkbox. The queue (`get_ward_state`) stays virtual-ward only. Briefing prompt unchanged; only the stay wording differs for inpatients, so P- cache keys are unchanged | Reuses scoring and plan flags (shared helper) |
+| Readmission probability | Per virtual-ward patient | `clinical/readmission.py`, hand-set logistic formula, labelled illustrative and not validated; column "Readmission risk" on the Patients Dashboard | No outcome data to fit a model |
+| Incoming 24 h | One metric under the KPI strip | `ops.kpis.incoming_24h` = known surge admissions (eta window) + baseline forecast matched by hour of day. "KSI" read as the KPI strip | Spec wording |
+| Not done | - | Risk drivers, inpatient readmission risk, inpatient reasons in the selector, UI tests beyond one AppTest | Lean version, time box |
