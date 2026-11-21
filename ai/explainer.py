@@ -286,12 +286,13 @@ def _drop_cached(keys) -> None:
 if __name__ == "__main__":
     import sys
 
-    from core.contracts import T0, fake_ward_state
+    from clinical.queue import get_ward_state
+    from core.contracts import T0
     from ops import whatif_cpsat
     from ops.capacity import get_capacity
 
-    pid = fake_ward_state().queue[0].patient_id
-    state = fake_ward_state(T0, [pid])
+    pid = get_ward_state("2026-11-21T14:00").queue[0].patient_id  # top of the real queue once flagged
+    state = get_ward_state(T0, [pid])
     cap = get_capacity(T0, state)
     plans_ = whatif_cpsat.run_all_profiles(5, state)
     shadow_ = {p: {r: whatif_cpsat.shadow_price(5, state, p, r) for r in SHADOW_NOUNS} for p in PROFILES}

@@ -5,8 +5,8 @@ Owner: B (Teammate B). Built in prompts B3 (back-end) and B5 (page).
 Public interface (stable, used by A and by the pages):
     record(decision: Decision) -> int
     list_decisions(patient_id=None, item_type=None) -> list[Decision]   # newest first
-    cache_get(key: str) -> dict | None
-    cache_put(key: str, response: dict, model: str, prompt_version: str) -> None   # upsert
+    cache_get(key: str) -> dict | None            # UNUSED: the AI cache is the file cache in ai/cache
+    cache_put(key: str, response: dict, model: str, prompt_version: str) -> None   # UNUSED, same reason
 
 The DB path is env LEDGER_DB or <repo root>/ledger.db. A new connection is opened per call.
 """
