@@ -4,7 +4,8 @@ What our actual setup does differently from the planning documents in `Guide and
 (Winning Roadmap, Claude Prompt Pack, Setup and Workflow Manual). Where they disagree, this file
 and the repo win. Add a line here whenever we deviate again during the day.
 
-Date: 21 Nov 2026. Scope so far: base files (Manual section 2.2, with content from Parts 3-5).
+Date: 21 Nov 2026. Scope so far: base files (Manual section 2.2, with content from Parts 3-5);
+clinical build A1 (NEWS2), A2 (artefact, trend, queue) and A3 (patient view) in section 7.
 
 ## 1. Repo, branches, machine
 
@@ -69,7 +70,14 @@ Date: 21 Nov 2026. Scope so far: base files (Manual section 2.2, with content fr
 | Streamlit smoke test (step 5.4) | Health check, and a browser check of the 4 sidebar pages and the clock slider if a browser tool exists | Health check returned `ok` and the server log had no tracebacks. No browser tool available, so the sidebar and slider were checked with `streamlit.testing.v1.AppTest` instead | See open question below |
 | `.vscode/` | Not mentioned | An untracked `.vscode/settings.json` (`python.terminal.useEnvFile`) appeared in the working tree, created by the editor, not by this setup. Left out of the commit | Not part of the specified tree |
 
-### Open question: clock slider on non-default pages
+### Resolved: clock slider on non-default pages
+
+Checked in a real browser after the merge into `main`: the slider shows on all 4 pages, and a clock
+set to 13:00 on Command Center stays 13:00 on Capacity & What-if and Ledger. No server errors. The
+`KeyError` came from `AppTest` running the page file without `app.py`, not from the app. Opening a
+page URL directly in a new tab starts a new session at 09:00, which is expected. No change needed.
+
+Original note:
 
 `AppTest` loaded the home page fine (4 pages registered, slider and `clock` state present). After `switch_page(...)` to another page, the re-run showed no sidebar slider and dropped the `clock` key, so pages 3, 4 and 1 raised `KeyError: "clock"`. It is not yet known whether this is a real problem in `app.py` or an `AppTest` artefact (it may run the page file directly instead of `app.py`). Please check in a real browser (`.\tasks.ps1 run`, click through all 4 pages, confirm the slider stays and the clock value is kept). If the slider disappears, `app.py` and the pages need adjusting in a separate "contracts: ..." commit.
 
@@ -80,3 +88,46 @@ Date: 21 Nov 2026. Scope so far: base files (Manual section 2.2, with content fr
 - `requirements.txt` and `.env.example` content.
 - CI workflow (`.github/workflows/test.yml`) content.
 - Data files: copied byte-for-byte, never edited.
+
+## 7. Clinical build (Teammate A, `feat/clinical`)
+
+### A1 - `clinical/news2.py`
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Plan fields used by NEWS2 | Plan-aware NEWS2 | Only `spo2_scale` is read from the monitoring plan; `hr_high`, `sbp_low`, ... are not used | They belong to PLAN_BREACH in `clinical/queue.py` (A2) |
+| `score_df` filters | (not specified) | No clock filter and no signal-quality filter inside `score_df` | Callers use `core.loader.at_clock`; the artefact filter lives in `clinical/artefact.py` |
+| Patient without a plan | (not specified) | Scale 1, one `logger.warning` per such patient | Safe default, visible in `logs/app.log` |
+| SpO2 Scale 2 on oxygen | RCP 2017 table | The "on oxygen" Scale 2 bands apply only when on oxygen and SpO2 >= 93; below 93 the "air" table applies | RCP table: 88-92 scores 0 even on oxygen |
+
+### A2 - `clinical/artefact.py`, `trend.py`, `queue.py`, Command Center page
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Artefact reading in the data | `data/README.md`: P-011 at 12:00 has HR 118 | `vitals.csv` and `expected_results.json` have HR 113 (SpO2 76, quality 0.22) | Tests follow `expected_results.json`; the README text is slightly off |
+| ISO helper | Timestamps returned as `YYYY-MM-DDTHH:MM` | `to_iso()` lives in `clinical/artefact.py` and is imported by `trend.py` and `queue.py` | Only the five A2 files may be edited; avoids three copies |
+| `detect()` output | ISO-string timestamps | `ts` column is an ISO string; `queue.py` converts it back to a Timestamp internally. `baselines()` windows are ISO strings too | Follows the ISO rule; Timestamps stay internal |
+| `detect()` scope | Every patient in the input | Includes inpatients (4-hourly readings); callers filter to `P-` | Keeps the function data-driven |
+| `deviations()` | Signature includes `messages` | `messages` accepted but unused (deviations depend on vitals only); result in parameter order hr, rr, spo2, temp_c, sbp, not sorted by z | Stable interface for A4; ordering was unspecified |
+| Missing `signal_quality` | (not specified) | Counted as good (`< 0.5` is False for NaN) | The data has no missing values |
+| `suppressed_alerts` / `alert_burden()["suppressed"]` | Readings that alert naive but not plan-aware | Counted per reading (naive alert and not plan-aware alert); equals naive minus plan-aware on this data (58 at 21:00) | Matches the spec wording; tests assert the equality |
+| `NEWS2_URGENT` | NEWS2 >= urgent threshold or `news2_max_single == 3`, not emergency | Same; emergency is evaluated first, so the two chips are exclusive | Already decided in the prompt |
+| `get_ward_state` input/output | `clock` ISO string or Timestamp | `WardState.clock` is always an ISO string; `escalated` is copied so the caller's list is never shared | Contract says `clock: str` |
+| Extra tests | Listed in the prompt | Added: cut-data vs full-data `detect()` equality at every hour (no look-ahead), ARTEFACT reason clears when the next reading is good, artefact excluded from the baseline, symptom window edges (same timestamp counts, 3 h is outside) | Cheap guards for the main risks |
+| Command Center page | Minimal, real data | `st.cache_data` wrapper takes `escalated` as a tuple; shows the suppressed metric, the queue table, the artefact table or "No artefacts". Smoke-tested with `AppTest` only (not in a browser) | Layout and colours come later |
+| Python for ad-hoc commands | Python 3.12 | The default `python` on this laptop is 3.10 without pytest; always use `.\tasks.ps1` or `.venv\Scripts\python.exe` | Venv has the project dependencies |
+
+### A3 - `clinical/views.py`, `queue.readings()`, Patient page
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Plan lines and baseline lines in `vitals_figure` | `add_hline` / `add_hrect` | Drawn as layout shapes (`xN domain` / `yN` refs) instead of `add_hline(row=...)` | The `row=` form took about 800 ms per figure; the page must load in under 1 s |
+| Amber trend markers | "On the rows whose z >= 2.5 if easy" | Done: a trend/symptom marker appears only on rows where that reading's robust z is at least 2.5 | Easy with the cached baselines |
+| `comorbidities` in the header | (type not specified) | List of strings, split on `;`. `custom_rule` and `caregiver_at_home` are `None` when empty | Easier to render; matches "None if empty" |
+| Unknown pid | `readings` returns an empty frame; header not specified | `patient_header` raises `KeyError` | A wrong id should fail loudly in the header |
+| NEWS2 figure window | "24 h up to the clock" | Readings with `ts >= clock - 24 h`, inclusive, so at 21:00 the 21:00 reading from the previous day is a bar | Inclusive boundary; tests compare stream hours only |
+| Selector and deep link | `st.query_params["pid"]` default | An `on_change` callback writes the selection back to `st.query_params["pid"]` | Otherwise the query param overrides the user's selection on every rerun |
+| Reason chips and timeline badges | "Small coloured labels" | Streamlit `:red-badge[...]` / `:orange-badge[...]` / `:gray-badge[...]` markdown, no custom HTML; `$` escaped in note text | Safe and no `unsafe_allow_html`; avoids LaTeX rendering of dollar signs |
+| Page smoke tests | `AppTest.from_file("pages/...")` | Absolute path built from the repo root | Streamlit 1.67 resolves relative paths against the calling test file (`tests/`) |
+| `get_briefing` | Interface in CLAUDE.md | Not added to `views.py` in A3; module docstring says A4 | As instructed in the A3 prompt |
+| First page load | Under 1 s after first load | First Patient render about 3 s in AppTest (cold data load); later renders about 0.07 s; `python -m clinical.views` per-call total about 220 ms | Cold load is the one-off scoring of all readings, shared with the Command Center |
