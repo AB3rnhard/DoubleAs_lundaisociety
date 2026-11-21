@@ -23,3 +23,16 @@ def test_profiles_and_t0():
 
 def test_escalated_passthrough():
     assert fake_ward_state(escalated=["P-002"]).escalated == ["P-002"]
+
+
+def test_no_fakes_in_app_code():
+    """fake_ward_state / fake_plan are for tests only: no app module outside core/contracts.py uses them."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    for folder in ("ai", "clinical", "ops", "pages", "core"):
+        for f in (root / folder).rglob("*.py"):
+            if f.name == "contracts.py" and folder == "core":
+                continue
+            src = f.read_text(encoding="utf-8")
+            assert "fake_ward_state" not in src and "fake_plan" not in src, f
+    assert "fake_ward_state" not in (root / "app.py").read_text(encoding="utf-8")

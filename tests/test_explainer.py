@@ -240,7 +240,7 @@ def test_client_unavailable_returns_deterministic(monkeypatch, sc):
 
 
 def test_client_import_error_is_handled(monkeypatch, sc):
-    # real _client(): ai.claude_client is a stub (or real); either way explain must not raise
+    # real _client(): whatever ai.claude_client does, explain must not raise
     res = run(sc)
     assert res["verified"] and res["source"] in ("claude", "deterministic")
 

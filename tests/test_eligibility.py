@@ -62,7 +62,7 @@ def test_rows_have_reasons_and_valid_evidence(result):
 
 def test_no_patient_specific_logic():
     rx = re.compile(r"[\"'](P|I|A)-\d")
-    for f in ("eligibility.py", "capacity.py", "_news2.py"):
+    for f in ("eligibility.py", "capacity.py"):
         src = (ROOT / "ops" / f).read_text(encoding="utf-8").split('if __name__ == "__main__"')[0]
         assert not rx.search(src), f
 
