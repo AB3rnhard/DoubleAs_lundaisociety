@@ -193,6 +193,29 @@ Files: `ai/claude_client.py` (shared), `ai/schemas.py`, `ai/prompts/briefing_v1.
 | Live check | One live call for P-002 at 13:00 | `source=claude`, `retried=True`, 30 of 30 claims verified, headline "Rising RR and temperature with new breathlessness and shivering; review needed now". The first answer failed 4 checks (numbers 97, 20, 21, 19 not in the cited evidence), so there were 2 API requests (about 13 s each, 4.0k in / 2.4-2.7k out tokens each). Both answers are in `ai/cache/` (the invalid first one is never shown; it is needed so demo mode finds the retry) | Shows the verifier and retry work on real output |
 | Timings | Page < 1 s after first load | `get_briefing(live=False)` about 10 ms with a cached answer, 3 ms rule-based. Patient page render 0.46 s on the second run in `AppTest`; first render in a fresh process about 10 s (imports of `anthropic`, plotly and the one-off scoring) | A3 measured about 3 s cold; the extra is the new imports |
 
+### A5 - message triage and inbox
+
+Files: `ai/triage.py`, `ai/schemas.py` (append), `ai/prompts/triage_v1.md`, `clinical/trend.py`, `clinical/queue.py`
+(`refresh()`), `clinical/views.py` and `ai/verifier.py` (call sites), `clinical/decisions.py`, `pages/1_Command_Center.py`,
+tests. Branch `feat/clinical2`.
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| Symptom rule | Prompt Pack: symptom = `clinical_symptom` | `is_symptom(triage)` is true for `clinical_symptom`, and for `relative_concern` when `needs_clinician` is true | The Prompt Pack expects M-014 (daughter, new confusion) as `relative_concern` with `needs_clinician` true; it must still count as a symptom |
+| Triage cache key | `triage_v1\|message_id\|hash` | The key has no model. The model is stored in the cache entry and shown in the inbox. The hash is over the user message (`Sender: ...
+Message: ...`) | A classification warmed with another model is still found. Briefing keys do contain the model (A4) |
+| Hash and `cached_symptom(message_id, text)` | Signature has no sender | The sender is looked up by `message_id` in `core.loader.load_messages()` (unknown id: "patient") to rebuild the same key | The key hashes the sender, the trend detector only has id and text |
+| Triage inside the trend detector | Replace the keyword match | `is_symptom_message(text, message_id=None)`: with an id it reads the cache only (`ai.triage.cached_symptom`, lazy import, no network) and falls back to `keyword_symptom(text)`. Live triage runs only from the inbox button | Queue, factsheet and the verifier must stay fast and offline; the A2 numbers hold with an empty cache, the fake labels and the warmed cache |
+| Keyword list | `is_symptom_message(text)` | Renamed to `keyword_symptom(text)`; the old name stays with the extra optional argument | Keeps `test_is_symptom_message` and other callers working; one place for the list |
+| `queue.refresh()` | Clears caches that depend on symptoms | Clears `queue._load` and `ai.factsheet._build`. `clinical.views._static` is not cleared (notes, messages and baselines do not use triage) | After live triage the queue above the inbox must use the new classification |
+| Extra prompt rules | Pack 3.3 prompt | Three rules appended: copy symptom words exactly, no number in the draft that is not in the message, `needs_clinician` true for a new or worse symptom (patient or relative) | They are what `check_triage` enforces |
+| `check_triage` | (no triage verifier in the Pack) | Terms must appear in the text (shared 4-letter stem counts), `needs_clinician` true for `clinical_symptom` or urgency `now` / `within_1h`, draft not empty, no dose, no number that is not in the message, "nurse" in the draft when `needs_clinician`. A failing output is never returned | Same guarantee as the briefing verifier |
+| Retry and fallback | Retry once when live | Same as A4: key `K`, then `K\|retry` with the errors appended; cache-only reads both; two failures drop both entries; any error uses `rule_based_triage` | Same pattern as `get_briefing` |
+| Rule-based triage | Keywords as fallback | Keyword match: `clinical_symptom`, `within_1h`, matched stems as terms, nurse will call shortly; otherwise `other`, `today`, nurse will reply today. Passes `check_triage` for every message (tested) | The page always has a safe draft |
+| Inbox location | (B5 KPI strip) | In `pages/1_Command_Center.py`, one function `_inbox_section(clock)` called last. Messages older than 12 h before the clock are in a collapsed expander; the Send button only logs a decision, nothing is sent | B can add the KPI strip above without conflicts |
+| Reply decisions | `message_reply` item type | `item_id` = `RPL-<message_id>`, `clinician_role` "nurse", `reason` = the text sent, `clinician_action` approve (text equals the draft) or edit, `ai_suggestion` = JSON `{"source", "triage"}`, `evidence_ids` = `[message_id]` | `Decision` has no field for the final text |
+| Live triage (section 8) | 15 Haiku calls, table of results | Not run in this session: the agent was not allowed to read the environment for the API key. `ai/cache/` has no triage files yet, so the app uses the keyword fallback until the button is pressed or the cache is warmed | To be done by a human with a key (`DEMO_MODE=0`) |
+
 ### Realignment with Teammate B (open)
 
 - [ ] 1. Decisions: `clinical.decisions.record_decision` switches to `core.ledger.record` automatically once it
@@ -208,3 +231,9 @@ Files: `ai/claude_client.py` (shared), `ai/schemas.py`, `ai/prompts/briefing_v1.
   `ai_suggestion` = JSON with `source`.
 - [ ] 5. Escalation: `st.session_state["escalated"]` is filled by the Patient page form; B3 reads it (no change
   needed, listed for the I1 story check).
+- [ ] 6. B5 Ledger page: reply rows have `item_type="message_reply"`, `item_id="RPL-<message_id>"`,
+  `clinician_role="nurse"`, `reason` = the text sent; they are in the pending file until item 1 is done.
+- [ ] 7. B5 KPI strip on the Command Center: add it above the existing content; the inbox is one function
+  `_inbox_section(clock)` at the end of the page, so the edits do not overlap. B edits A's page only with A's OK.
+- [ ] 8. I2 cache warming: briefing cache keys include the model (A4), triage keys do not. Warm the briefings with
+  the model the demo will run with (`CLAUDE_RUNTIME_MODEL`), or the demo falls back to the rule-based summary.
