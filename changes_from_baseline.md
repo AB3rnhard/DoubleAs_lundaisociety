@@ -165,3 +165,19 @@ Shadow price of kits under `safety_first` is 1 in both scenarios (README: "the b
 | Page smoke tests | `AppTest.from_file("pages/...")` | Absolute path built from the repo root | Streamlit 1.67 resolves relative paths against the calling test file (`tests/`) |
 | `get_briefing` | Interface in CLAUDE.md | Not added to `views.py` in A3; module docstring says A4 | As instructed in the A3 prompt |
 | First page load | Under 1 s after first load | First Patient render about 3 s in AppTest (cold data load); later renders about 0.07 s; `python -m clinical.views` per-call total about 220 ms | Cold load is the one-off scoring of all readings, shared with the Command Center |
+
+## 9.B Deviations found while building B3 (core/ledger, ops/whatif_view, Capacity & What-if page)
+
+| Area | Prompt / spec | Actual | Why |
+|---|---|---|---|
+| `ledger.record` signature | `record(decision) -> int` | `record(decision, prompt_version=None) -> int` (extra optional arg, stored in `decisions.prompt_version`) | The table has a `prompt_version` column but `Decision` has no such field; contracts unchanged |
+| `ledger` item_type check | Validate against contracts Literals | `clinician_action` uses `get_args(Action)`; item types are mirrored as a constant set | `Decision.item_type` is an inline Literal and contracts uses `from __future__ import annotations`, so it is a string at runtime |
+| Ledger DB directory | Not specified | Parent directory of `LEDGER_DB` is created if missing | Avoids "unable to open database file" for paths in new folders |
+| `signoff_tasks` signature | `(plan, item_id, clock)` | `(plan, item_id, clock, eligibility_df=None)`; `evidence_ids` = patient id plus that patient's eligibility evidence | Tasks need real evidence ids; without the frame it is just the patient id |
+| Evidence of plans and tasks | "Moved/placed ids" | Moved ids are the plan's patient and admission ids (`I-03`, `A-03`, `P-005`, ...); admissions have no eligibility rows, so they only contribute their own id | Eligibility covers inpatients and step-down candidates only |
+| `describe_moves` labels | Direct to virtual ward "A-03 Community-acquired pneumonia" | Display uses the full `working_diagnosis` from the CSV, e.g. "A-03 Community-acquired pneumonia (CURB-65 = 1)" | No truncation rule in the spec |
+| Extra page-local keys | Only `cap_n`, `cap_incl_esc`, `cap_show`, `cap_role_*`, `cap_adopt_*` | Also `cap_find` (button) and `cap_reason_{profile}` (text input) | Widgets need keys; all `cap_` prefixed, no shared keys added |
+| Adopted state | Badge and disabled button on rerun | In the click run itself the button stays enabled and the badge is filled in via `st.empty()`; the next rerun disables it. A second click on the next run cannot duplicate (item_id already in the ledger) | Streamlit cannot disable a button after it is clicked in the same run |
+| Shadow-price notes | Kits, "also beds if > 0" | One `st.info` per profile and resource with a positive price, kits first, then beds | Matches the prompt, noted for clarity |
+| Page timing | Under 1 s | AppTest, T0 with P-002: first load 0.7 to 2.5 s (cold data and scoring), "Find plans" cold about 1.0 s (3 plans plus 6 shadow prices), warm rerun about 0.1 s | Cold cost is the CP-SAT solves; every later render is cached |
+| Visual check | `.\tasks.ps1 run` click-through | No browser tool: `app.py` run through AppTest, all 4 pages at 09:00, 14:00 and 21:00 (Capacity with "Find plans" clicked and P-002 not escalated), no exceptions, no tracebacks in `logs/app.log` | Rely on AppTest as instructed |
