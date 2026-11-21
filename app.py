@@ -20,7 +20,7 @@ st.session_state.setdefault("tasks", [])
 
 pg = st.navigation([
     st.Page("pages/1_Command_Center.py", title="Patients Dashboard", default=True),
-    st.Page("pages/2_Patient.py", title="Patient"),
+    st.Page("pages/2_Patient.py", title="Patients"),
     st.Page("pages/3_Capacity_WhatIf.py", title="Admission Planning"),
     st.Page("pages/4_Ledger.py", title="Ledger"),
 ])
