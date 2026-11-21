@@ -1,0 +1,27 @@
+patient_id,spo2_scale,spo2_target_low,spo2_target_high,hr_low,hr_high,rr_high,sbp_low,temp_high,news2_urgent_threshold,news2_emergency_threshold,custom_rule,set_by,set_at
+P-001,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T08:00
+P-002,1,94,100,50,110,22,100,38.0,5,7,"Escalate to on-call physician if NEWS2 >= 5, any single parameter score 3, SpO2 < 93% on air sustained > 1 h, or new oxygen requirement. Low threshold for readmission given oxygen need during Feb 2025 pneumonia.","Dr. A. Rosen (consultant, internal medicine)",2026-11-19T08:00
+P-003,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-18T20:00
+P-004,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T16:00
+P-005,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-17T14:00
+P-006,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-18T14:00
+P-007,2,88,92,50,110,22,100,38.0,5,7,"Confirmed hypercapnic respiratory failure on blood gas (2024 and this admission). Use NEWS2 SpO2 Scale 2, target 88-92%. Do NOT give oxygen without physician review.","Dr. A. Rosen (consultant, internal medicine)",2026-11-19T12:00
+P-008,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T20:00
+P-009,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-17T04:00
+P-010,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-20T02:00
+P-011,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T06:00
+P-012,1,94,100,50,125,22,100,38.0,5,7,Permanent AF with resting HR 95-108 is baseline. Alert on HR > 125 sustained 1 h.,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T00:00
+P-013,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-16T08:00
+P-014,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-20T08:00
+I-01,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-20T02:00
+I-02,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-18T20:00
+I-03,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T02:00
+I-04,2,88,92,50,110,22,100,38.0,5,7,"Hypercapnic COPD. NEWS2 SpO2 Scale 2, target 88-92%.","Dr. A. Rosen (consultant, internal medicine)",2026-11-19T12:00
+I-05,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T16:00
+I-06,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T22:00
+I-07,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-20T16:00
+I-08,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-18T10:00
+I-09,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-20T12:00
+I-10,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-17T08:00
+I-11,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-19T06:00
+I-12,1,94,100,50,110,22,100,38.0,5,7,,"Dr. A. Rosen (consultant, internal medicine)",2026-11-18T14:00

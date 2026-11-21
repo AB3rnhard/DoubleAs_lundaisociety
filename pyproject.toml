@@ -1,0 +1,14 @@
+[project]
+name = "sjukhus-hemma-copilot"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+extend-exclude = ["scripts/generate_datapack.py", "Test", "Guide and roadmap", "Sjukhus Hemma Synthetic Data Pack"]
