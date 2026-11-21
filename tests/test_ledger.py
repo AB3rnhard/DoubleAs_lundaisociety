@@ -64,3 +64,58 @@ def test_repo_db_untouched(db):
     after = repo_db.stat().st_mtime_ns if repo_db.exists() else None
     assert before == after
     assert ledger.db_path() == db
+
+
+# ---------------------------------------------------------------- B5: list_rows + import_pending
+@pytest.fixture
+def pending(tmp_path, monkeypatch):
+    p = tmp_path / "pending.jsonl"
+    monkeypatch.setenv("DECISIONS_PENDING_PATH", str(p))
+    return p
+
+
+def test_list_rows_order_filters_and_prompt_version():
+    a = dec("P-001", item_id="a")
+    b = Decision("2026-11-21T15:00", "P-002", "message_reply", "b", "s", "edit", "nurse", "r", ["M-1"])
+    c = Decision("2026-11-21T14:00", "P-001", "capacity_plan", "c", "s", "reject", "Bed manager", "r", [])
+    ledger.record(a, prompt_version="briefing_v1")
+    ledger.record(b)
+    ledger.record(c)
+    rows = ledger.list_rows()
+    assert [r["item_id"] for r in rows] == ["b", "c", "a"]  # ts desc, then id desc
+    assert rows[2]["prompt_version"] == "briefing_v1" and rows[0]["prompt_version"] is None
+    assert rows[0]["evidence_ids"] == ["M-1"] and rows[2]["evidence_ids"] == ["F1", "N-002"]
+    assert {"id", "recorded_at", "clinician_role"} <= set(rows[0])
+    assert [r["item_id"] for r in ledger.list_rows(patient_id="P-001")] == ["c", "a"]
+    assert [r["item_id"] for r in ledger.list_rows(item_type="message_reply")] == ["b"]
+    assert [r["item_id"] for r in ledger.list_rows(action="reject")] == ["c"]
+    assert ledger.list_rows(patient_id="P-002", action="reject") == []
+
+
+def test_import_pending_imports_once_and_renames(pending):
+    from clinical import decisions as cd
+    d1, d2 = dec(item_id="x", ev=["F1", "N-1"]), dec("P-002", item_id="y", action="edit")
+    for d in (d1, d2):
+        with open(pending, "a", encoding="utf-8") as f:
+            import json
+
+            from core.contracts import to_dict
+            f.write(json.dumps(to_dict(d), ensure_ascii=False) + "\n")
+    assert len(cd.list_pending()) == 2
+    assert ledger.import_pending() == 2
+    assert not pending.exists()
+    assert len(list(pending.parent.glob("pending.jsonl.imported-*"))) == 1
+    assert sorted(d.item_id for d in ledger.list_decisions()) == ["x", "y"]
+    assert next(r for r in ledger.list_rows() if r["item_id"] == "x")["evidence_ids"] == ["F1", "N-1"]
+    assert ledger.import_pending() == 0  # file gone: nothing to do
+
+
+def test_import_pending_is_idempotent_on_duplicates(pending):
+    import json
+
+    from core.contracts import to_dict
+    d = dec(item_id="x")
+    ledger.record(d)  # already in the ledger
+    pending.write_text(json.dumps(to_dict(d), ensure_ascii=False) + "\n", encoding="utf-8")
+    assert ledger.import_pending() == 0
+    assert pending.exists() and len(ledger.list_rows()) == 1

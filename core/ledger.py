@@ -94,14 +94,69 @@ def list_decisions(patient_id: str | None = None, item_type: str | None = None) 
                      evidence_ids=json.loads(r["evidence_ids"])) for r in rows]
 
 
+def list_rows(patient_id: str | None = None, item_type: str | None = None,
+              action: str | None = None) -> list[dict]:
+    """All columns as dicts (evidence_ids as a list), newest first by (ts desc, id desc), optionally filtered."""
+    where, args = [], []
+    for col, val in (("patient_id", patient_id), ("item_type", item_type), ("clinician_action", action)):
+        if val is not None:
+            where.append(f"{col} = ?")
+            args.append(val)
+    sql = ("SELECT * FROM decisions" + (" WHERE " + " AND ".join(where) if where else "")
+           + " ORDER BY ts DESC, id DESC")
+    with closing(_connect()) as con:
+        rows = con.execute(sql, args).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["evidence_ids"] = json.loads(d["evidence_ids"] or "[]")
+        out.append(d)
+    return out
+
+
+def decision_key(d: Decision | dict) -> tuple:
+    """Identity used to de-duplicate a decision across the ledger and the pending file."""
+    get = d.get if isinstance(d, dict) else (lambda k: getattr(d, k))
+    return (get("ts"), get("item_id"), get("clinician_action"), get("reason") or "")
+
+
+def import_pending(path: str | Path | None = None) -> int:
+    """Record every pending-file decision that is not yet in the ledger; return how many were recorded.
+
+    After a successful import (count > 0) the file is renamed to <name>.imported-<YYYYmmddHHMM>, never deleted.
+    """
+    from clinical import decisions as cd  # lazy: clinical.decisions imports this module
+
+    src = Path(path) if path else cd._pending_path()
+    if not src.exists():
+        return 0
+    pending = []
+    with open(src, encoding="utf-8") as f:
+        pending = [Decision(**json.loads(line)) for line in f if line.strip()]
+    seen = {decision_key(r) for r in list_rows()}
+    n = 0
+    for d in sorted(pending, key=lambda x: x.ts):  # oldest first keeps ids in time order
+        k = decision_key(d)
+        if k in seen:
+            continue
+        record(d)
+        seen.add(k)
+        n += 1
+    if n:
+        src.rename(src.with_name(f"{src.name}.imported-{datetime.now():%Y%m%d%H%M}"))
+        logger.info("ledger: imported %d pending decisions from %s", n, src.name)
+    return n
+
+
 def cache_get(key: str) -> dict | None:
+    """Unused; the AI cache lives in ai/cache (see changes_from_baseline)."""
     with closing(_connect()) as con:
         row = con.execute("SELECT response_json FROM ai_cache WHERE cache_key = ?", (key,)).fetchone()
     return json.loads(row["response_json"]) if row else None
 
 
 def cache_put(key: str, response: dict, model: str, prompt_version: str) -> None:
-    """Insert or replace the cached response for key."""
+    """Insert or replace the cached response for key. Unused; the AI cache lives in ai/cache (see changes_from_baseline)."""
     with closing(_connect()) as con, con:
         con.execute("INSERT OR REPLACE INTO ai_cache (cache_key, model, prompt_version, response_json, created_at)"
                     " VALUES (?,?,?,?,?)",
@@ -109,7 +164,11 @@ def cache_put(key: str, response: dict, model: str, prompt_version: str) -> None
 
 
 if __name__ == "__main__":
+    import sys
     import tempfile
+    if "--import-pending" in sys.argv:
+        print(f"imported {import_pending()} pending decision(s)")
+        raise SystemExit(0)
     os.environ["LEDGER_DB"] = str(Path(tempfile.mkdtemp()) / "demo.db")
     record(Decision("2026-11-21T14:00", "P-002", "briefing", "BRF-P-002-1400", "Possible deterioration [F1]",
                     "approve", "On-call physician", "Agree – Åsa", ["F1", "N-004"]))
