@@ -319,3 +319,13 @@ Branch `feat/story`. New `core/story.py` (shared), a call to `story.render()` an
 - Test limit: after `switch_page` AppTest renders no tree, so `tests/test_story.py` uses a fresh AppTest per button and only checks the clock and no exception.
 
 Still open for I2: warm the P-002 13:00 briefing, triage up to 14:00 and the 14:00 explainer with the demo model (`CLAUDE_RUNTIME_MODEL`).
+
+## 14. Refinement D0 - page renames, census tiles, hospital overview (21 Nov 2026)
+
+| Area | Request | Actual | Why |
+|---|---|---|---|
+| Branch / ownership | Edit pages of A and B, `ops/kpis.py` and shared `app.py` | Ran directly on `main` by the user's decision. File names, widget keys and internal codes (`ARTEFACT`, `WardState.artefacts`, `_inbox_section`) unchanged | One small cross-cutting UI refinement; avoids a branch for ~20 min of work |
+| Renames | Patients Dashboard, Admission Planning, Home Hospital Inbox, Clinician review heading | Done as listed. "ATTENTION HERE" replaces only the Command Center heading "Artefacts" (plus a caption on the signal-quality threshold); queue chip, story button and Ledger tile "Artefacts caught" keep the old word | Decision taken before the run |
+| Census tiles | Two tiles in the KPI strip | `Patients at home` and `Virtual slots used` from `get_capacity()["virtual_slots"]` (static `resources.json`; a possible readmission stays counted). 8 tiles, two rows of 4 | Same numbers as Admission Planning |
+| Hospital overview | Table of the 12 inpatients | `ops.kpis.inpatient_overview` reuses `ops.eligibility` (NEWS2 24 h, home-care status and reasons, transfer risk); no new scoring. New section on the dashboard, above the Inbox | Keeps one source of truth |
+| Not done | - | Guides and the demo script still use the old page names. The Prompt Pack's "D0" (data pack regeneration) is a different prompt. Lean version has no UI tests for the Patient page heading, the readmission line, the sort order and the planned-discharge format (check in the browser) | Time box |
