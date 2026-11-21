@@ -1,0 +1,13 @@
+{
+  "cache_key": "triage_v1|M-001|18e922f7c0db",
+  "model": "claude-haiku-5-5",
+  "prompt_version": "triage_v1",
+  "created_at": "2026-11-21T15:30:11",
+  "response": {
+    "category": "logistics",
+    "urgency": "none",
+    "symptom_terms": [],
+    "needs_clinician": false,
+    "draft_reply": "Thank you for your message. We are happy to help with your visit schedule. Our team will confirm the nurse's arrival time for tomorrow with you shortly."
+  }
+}
