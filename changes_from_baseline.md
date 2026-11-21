@@ -261,7 +261,7 @@ Message: ...`) | A classification warmed with another model is still found. Brie
   `clinical.decisions.list_pending()`. Briefing rows have `item_type="briefing"`, `item_id="BRF-<pid>-<HHMM>"`,
   `ai_suggestion` = JSON with `source`.
 - [x] 5. Escalation: `st.session_state["escalated"]` is filled by the Patient page form; B3 reads it (no change
-  needed, listed for the I1 story check). - done in C2: integration test `test_real_ward_state_escalation_drives_the_whatif` (real `get_ward_state` -> `run_whatif`, 3 profiles, with and without escalation, numbers from `expected_results.json`).
+  needed, listed for the I1 story check). - done in I1: story step 5 uses the escalation set on the Patient page. Also done in C2: integration test `test_real_ward_state_escalation_drives_the_whatif` (real `get_ward_state` -> `run_whatif`, 3 profiles, with and without escalation, numbers from `expected_results.json`).
 - [x] 6. B5 Ledger page: DONE (B5) reply rows are shown (type `message_reply`, reason = text sent). Original note: reply rows have `item_type="message_reply"`, `item_id="RPL-<message_id>"`,
   `clinician_role="nurse"`, `reason` = the text sent; they are in the pending file until item 1 is done.
 - [x] 7. B5 KPI strip: DONE (B5, agreed with A) six tiles from `ops.kpis` above the existing metric; nothing else on the page touched. Original note: B5 KPI strip on the Command Center: add it above the existing content; the inbox is one function
@@ -307,3 +307,15 @@ and are not part of it. `ops.greedy` `max_capacity` still differs from the refer
 
 Still open: I2 cache warming with the demo model (`CLAUDE_RUNTIME_MODEL`); decide whether CLAUDE.md "Interfaces" should drop the
 `cache_get/cache_put` line (shared, `contracts:` commit); the 8 untracked cache files in `ai/cache/` (commit as demo cache or delete).
+
+## 13. Integration I1 - story mode (lean)
+
+Branch `feat/story`. New `core/story.py` (shared), a call to `story.render()` and a `story_goto` switch in `app.py`, `tests/test_story.py`. No Claude call.
+
+- Placement: a collapsed "Demo story" expander in the sidebar below the clock slider (on every page), not on the Command Center.
+- Steps are data (clock, page, query params, extra state). Callbacks write the state; `app.py` pops `story_goto` and calls `st.switch_page(page, query_params=...)`. No step approves, marks a readmission or adopts a plan.
+- Reset clears the session only (`escalated`, `tasks`, `cap_show`, `cap_explained`, clock to 09:00). The ledger keeps its rows: on a second run "Adopt plan" shows "Adopted". Before the real demo stop the app and rename `ledger.db` (or set `LEDGER_DB=demo.db` in `.env`).
+- The "possible readmission" mark lives in `st.session_state["escalated"]` and is not written to the ledger (the briefing approval is). Say it out loud in the demo.
+- Test limit: after `switch_page` AppTest renders no tree, so `tests/test_story.py` uses a fresh AppTest per button and only checks the clock and no exception.
+
+Still open for I2: warm the P-002 13:00 briefing, triage up to 14:00 and the 14:00 explainer with the demo model (`CLAUDE_RUNTIME_MODEL`).
