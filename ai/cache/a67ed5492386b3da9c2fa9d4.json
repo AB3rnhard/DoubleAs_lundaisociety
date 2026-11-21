@@ -1,0 +1,202 @@
+{
+  "cache_key": "briefing_v1|claude-haiku-5-5|P-002|2026-11-21T13:00|9d23ba5b7e7d|retry",
+  "model": "claude-haiku-5-5",
+  "prompt_version": "briefing_v1",
+  "created_at": "2026-11-21T14:02:11",
+  "response": {
+    "headline": "Rising RR and temperature with new breathlessness and shivering; review needed now",
+    "status": "needs_review_now",
+    "summary_points": [
+      {
+        "text": "13:00 obs: HR 90, SpO2 96, RR 19, SBP 127, Temp 37.9, alert, on air.",
+        "evidence_ids": [
+          "F19"
+        ]
+      },
+      {
+        "text": "RR and temperature have risen steadily since 08:00, flagged as deviations at 13:00.",
+        "evidence_ids": [
+          "F14",
+          "F18",
+          "F19",
+          "F20",
+          "F21"
+        ]
+      },
+      {
+        "text": "Patient message at 12:00 reports more breathlessness walking to the bathroom than yesterday, and feeling shivery.",
+        "evidence_ids": [
+          "M-009"
+        ]
+      },
+      {
+        "text": "Rule-based NEWS2 reads 0 at 13:00 despite the RR and temperature deviations.",
+        "evidence_ids": [
+          "F12",
+          "F20",
+          "F21"
+        ]
+      },
+      {
+        "text": "Nurse note 07:00 today: slept poorly due to cough, otherwise feels okay, vitals within plan.",
+        "evidence_ids": [
+          "N-013"
+        ]
+      },
+      {
+        "text": "Queue flagged for TREND and SYMPTOM_MESSAGE, first flagged 12:00.",
+        "evidence_ids": [
+          "F11"
+        ]
+      }
+    ],
+    "changes_vs_baseline": [
+      {
+        "parameter": "rr",
+        "baseline": "median 16",
+        "current": "19 at 13:00",
+        "evidence_ids": [
+          "F20",
+          "F19"
+        ]
+      },
+      {
+        "parameter": "temp_c",
+        "baseline": "median 37.2",
+        "current": "37.9 at 13:00",
+        "evidence_ids": [
+          "F21",
+          "F19"
+        ]
+      }
+    ],
+    "plan_rules": [
+      {
+        "rule": "Custom escalation: NEWS2 of 5 or more, any single parameter score 3, SpO2 below 93 on air sustained over 1 h, or new oxygen requirement",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F9",
+          "F12",
+          "F19"
+        ]
+      },
+      {
+        "rule": "RR high limit 22",
+        "state": "approaching",
+        "evidence_ids": [
+          "F4",
+          "F19"
+        ]
+      },
+      {
+        "rule": "Temp high limit 38.0",
+        "state": "approaching",
+        "evidence_ids": [
+          "F6",
+          "F19"
+        ]
+      },
+      {
+        "rule": "SpO2 target range 94-100",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F2",
+          "F19"
+        ]
+      },
+      {
+        "rule": "HR range 50-110",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F3",
+          "F19"
+        ]
+      },
+      {
+        "rule": "SBP low limit 100",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F5",
+          "F19"
+        ]
+      },
+      {
+        "rule": "NEWS2 urgent threshold 5 or single parameter 3",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F7",
+          "F12"
+        ]
+      }
+    ],
+    "relevant_history": [
+      {
+        "text": "Admitted 2026-11-18 with right lower lobe pneumonia; CRP 186 on admission.",
+        "evidence_ids": [
+          "N-009"
+        ]
+      },
+      {
+        "text": "Progress note 2026-11-19: afebrile over 24 h, CRP 112, transferred home with IV cefotaxime via pump.",
+        "evidence_ids": [
+          "N-010"
+        ]
+      },
+      {
+        "text": "Previous pneumonia Feb 2025 required 2 L/min oxygen for 3 days; low readmission threshold set.",
+        "evidence_ids": [
+          "N-009",
+          "F9"
+        ]
+      },
+      {
+        "text": "Lives with husband at home; independent in ADL; no treatment limitations.",
+        "evidence_ids": [
+          "N-009",
+          "F1"
+        ]
+      }
+    ],
+    "suggested_actions": [
+      {
+        "action": "Consider same-day physician review of the symptom message and rising RR and temperature trend.",
+        "rationale": "Patient reports worsening exertional breathlessness and shivering while RR and temperature are flagged.",
+        "evidence_ids": [
+          "M-009",
+          "F20",
+          "F21"
+        ]
+      },
+      {
+        "action": "Consider contacting patient now to check breathing, shivering and pump status.",
+        "rationale": "Symptom message at 12:00 has no documented clinician response in the record.",
+        "evidence_ids": [
+          "M-009",
+          "N-013"
+        ]
+      },
+      {
+        "action": "Consider measuring SpO2 on exertion and repeating full observations before the next scheduled review.",
+        "rationale": "Resting SpO2 is 96 but the patient reports breathlessness on walking.",
+        "evidence_ids": [
+          "F19",
+          "M-009"
+        ]
+      },
+      {
+        "action": "Consider the planned day 5 bloods and whether earlier bloods are needed.",
+        "rationale": "Latest CRP is 112 from 2026-11-19; no newer results are in the record.",
+        "evidence_ids": [
+          "N-010"
+        ]
+      }
+    ],
+    "missing_information": [
+      "Latest blood results since CRP 112 on 2026-11-19",
+      "Exertional SpO2 or home oxygen status",
+      "Whether patient has been contacted about the 12:00 message",
+      "Current temperature trend beyond 13:00 readings",
+      "Cause of shivering and pump or antibiotic status"
+    ]
+  }
+}

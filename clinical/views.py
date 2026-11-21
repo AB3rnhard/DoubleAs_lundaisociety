@@ -9,7 +9,8 @@ Public interface (pure functions, no streamlit; everything uses only data with t
     news2_figure(pid, clock) -> plotly Figure    (NEWS2 bars of the last 24 h)
     timeline(pid, clock) -> list[dict]           (notes and messages, newest first)
 
-get_briefing(pid, clock, live=False) (CLAUDE.md interface) is still to come in A4.
+get_briefing(pid, clock, live=False) (CLAUDE.md interface) lives in ai/factsheet.py (built in A4), not
+here: this module must not import ai.* (import cycle, since ai.factsheet imports patient_header).
 """
 from __future__ import annotations
 
