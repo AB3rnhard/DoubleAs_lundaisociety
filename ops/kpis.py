@@ -15,6 +15,7 @@ import logging
 import pandas as pd
 
 from clinical import queue
+from core.loader import load_admissions, load_demand_forecast
 from ops import eligibility
 from ops.capacity import get_capacity
 
@@ -155,12 +156,34 @@ def inpatient_overview(clock: str) -> list[dict]:
     return rows
 
 
+def incoming_24h(clock: str) -> dict:
+    """Expected incoming patients in (clock, clock + 24 h]: known surge admissions + baseline forecast.
+
+    known = rows of admissions_incoming.csv by eta (split by needs_physical_bed / direct_hah_possible);
+    forecast = expected_admissions summed over the 24 hours of the window, matched by hour of day (the
+    forecast file is one daily profile). total = known + forecast.
+    """
+    cut = pd.Timestamp(clock)
+    end = cut + pd.Timedelta(hours=24)
+    adm = load_admissions()
+    adm = adm[(pd.to_datetime(adm["eta"]) > cut) & (pd.to_datetime(adm["eta"]) <= end)]
+    fc = load_demand_forecast()
+    by_hour = fc.groupby(pd.to_datetime(fc["hour"]).dt.hour)["expected_admissions"].sum()
+    forecast = sum(float(by_hour.get((cut + pd.Timedelta(hours=i)).hour, 0.0)) for i in range(1, 25))
+    known = len(adm)
+    return {"known": known, "known_bed": int(adm["needs_physical_bed"].sum()),
+            "known_home": int(adm["direct_hah_possible"].sum()), "forecast": round(forecast, 2),
+            "total": round(known + forecast, 2)}
+
+
 if __name__ == "__main__":
     for _h in ("09:00", "13:00", "21:00"):
         _c = f"2026-11-21T{_h}"
         _k = command_center_kpis(_c, [])
         print(_c, [(t["label"], t["value"]) for t in kpi_tiles(_k)])
         print("  lead_times:", lead_times(_c))
+    for _h in ("09:00", "13:00", "21:00"):
+        print("incoming_24h", _h, incoming_24h(f"2026-11-21T{_h}"))
     import time
     _t0 = time.perf_counter()
     _rows = inpatient_overview("2026-11-21T13:00")

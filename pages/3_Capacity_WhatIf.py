@@ -207,7 +207,7 @@ def _what_if(ctx: dict) -> None:
     with c2:
         incl = st.toggle("Include escalated patients", value=True, key="cap_incl_esc", disabled=not esc_all)
         if not esc_all:
-            st.caption("None marked yet (Patient page)")
+            st.caption("None marked yet (Patients page)")
     if c3.button("Find plans", type="primary", key="cap_find"):
         st.session_state["cap_show"] = True
     if not st.session_state.get("cap_show"):

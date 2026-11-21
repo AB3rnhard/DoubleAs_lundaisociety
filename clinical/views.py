@@ -22,7 +22,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from clinical.artefact import to_iso
-from clinical.queue import get_ward_state, readings
+from clinical.queue import get_ward_state, inpatient_item, readings
 from clinical.trend import SIGN, Z_THRESHOLD, baselines, is_symptom_message
 from core.loader import (
     load_messages,
@@ -74,6 +74,12 @@ def virtual_ward_patients() -> list[str]:
     return sorted(p for p in _static()["patients"].index if str(p).startswith("P-"))
 
 
+def inpatients() -> list[str]:
+    """Inpatient ids (location INPATIENT), sorted by bed."""
+    p = _static()["patients"]
+    return list(p[p["location"] == "INPATIENT"].sort_values("bed_or_slot").index)
+
+
 def _clean(value):
     """NaN/NaT -> None, numpy scalars -> python."""
     if pd.isna(value):
@@ -87,9 +93,12 @@ def patient_header(pid: str, clock: str | pd.Timestamp) -> dict:
     p = st_["patients"].loc[pid]
     plan = st_["plans"].loc[pid] if pid in st_["plans"].index else None
     cut = pd.Timestamp(clock)
-    start = p["virtual_ward_start"]
+    inpatient = p["location"] == "INPATIENT"
+    start = p["admitted_at"] if inpatient else p["virtual_ward_start"]
     day = int((cut - start).days) + 1 if pd.notna(start) else None
     item = next((q for q in get_ward_state(cut).queue if q.patient_id == pid), None)
+    if item is None and inpatient:
+        item = inpatient_item(pid, cut)
     comorb = _clean(p["comorbidities"])
     return {
         "patient_id": pid,
@@ -98,6 +107,8 @@ def patient_header(pid: str, clock: str | pd.Timestamp) -> dict:
         "sex": p["sex"],
         "primary_diagnosis": p["primary_diagnosis"],
         "icd10": p["icd10"],
+        "location": p["location"],
+        "bed_or_slot": _clean(p["bed_or_slot"]),
         "comorbidities": [c.strip() for c in str(comorb).split(";") if c.strip()] if comorb else [],
         "municipality": p["municipality"],
         "lives_alone": bool(p["lives_alone"]),
@@ -157,7 +168,7 @@ def vitals_figure(pid: str, clock: str | pd.Timestamp) -> go.Figure:
     cut = pd.Timestamp(clock)
     r = readings(pid, cut)
     plan = st_["plans"].loc[pid] if pid in st_["plans"].index else None
-    base = st_["baselines"].get(pid)
+    base = None if str(st_["patients"].loc[pid, "location"]) == "INPATIENT" else st_["baselines"].get(pid)
     good = r[~r["artefact"]]
 
     fig = make_subplots(rows=len(ROWS), cols=1, shared_xaxes=True, vertical_spacing=0.04)

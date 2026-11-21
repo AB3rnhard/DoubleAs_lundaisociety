@@ -20,7 +20,7 @@ from clinical.artefact import artefact_list, is_artefact, to_iso
 from clinical.news2 import score_df
 from clinical.trend import detect
 from core.contracts import QueueItem, Reason, WardState
-from core.loader import at_clock, load_messages, load_monitoring_plans, load_vitals
+from core.loader import at_clock, load_messages, load_monitoring_plans, load_patients, load_vitals
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,25 @@ NEWS2_ALERT = 5  # alert reading: news2 >= 5 or any single parameter scoring 3
 
 def _alert(df: pd.DataFrame) -> pd.Series:
     return (df["news2"] >= NEWS2_ALERT) | (df["news2_max_single"] == 3)
+
+
+def _add_plan_flags(good: pd.DataFrame) -> pd.DataFrame:
+    """Add emergency, urgent and plan_breach to good readings that carry the plan columns."""
+    good["emergency"] = good["news2"] >= good["news2_emergency_threshold"]
+    good["urgent"] = ~good["emergency"] & ((good["news2"] >= good["news2_urgent_threshold"])
+                                           | (good["news2_max_single"] == 3))
+    good["plan_breach"] = (
+        (good["spo2"] < good["spo2_target_low"])
+        | ((good["spo2"] > good["spo2_target_high"]) & (good["on_oxygen"] == 1))
+        | (good["hr"] < good["hr_low"]) | (good["hr"] > good["hr_high"])
+        | (good["rr"] > good["rr_high"]) | (good["sbp"] < good["sbp_low"])
+        | (good["temp_c"] > good["temp_high"])
+    )
+    return good
+
+
+_PLAN_COLUMNS = ["patient_id", "spo2_target_low", "spo2_target_high", "hr_low", "hr_high", "rr_high",
+                 "sbp_low", "temp_high", "news2_urgent_threshold", "news2_emergency_threshold"]
 
 
 @lru_cache(maxsize=1)
@@ -58,20 +77,30 @@ def _load() -> dict:
     good = good.merge(plans[["patient_id", "spo2_target_low", "spo2_target_high", "hr_low", "hr_high",
                              "rr_high", "sbp_low", "temp_high", "news2_urgent_threshold",
                              "news2_emergency_threshold"]], on="patient_id", how="left")
-    good["emergency"] = good["news2"] >= good["news2_emergency_threshold"]
-    good["urgent"] = ~good["emergency"] & ((good["news2"] >= good["news2_urgent_threshold"])
-                                           | (good["news2_max_single"] == 3))
-    good["plan_breach"] = (
-        (good["spo2"] < good["spo2_target_low"])
-        | ((good["spo2"] > good["spo2_target_high"]) & (good["on_oxygen"] == 1))
-        | (good["hr"] < good["hr_low"]) | (good["hr"] > good["hr_high"])
-        | (good["rr"] > good["rr_high"]) | (good["sbp"] < good["sbp_low"])
-        | (good["temp_c"] > good["temp_high"])
-    )
+    good = _add_plan_flags(good)
     good["any_flag"] = good["trend_flag"] | good["symptom_flag"] | good["urgent"] | good["emergency"]
     good = good.sort_values(["patient_id", "ts"]).reset_index(drop=True)
     logger.info("Loaded %d virtual-ward readings (%d good) for the queue", len(scored), len(good))
     return {"all": scored, "good": good, "patients": sorted(scored["patient_id"].unique())}
+
+
+@lru_cache(maxsize=1)
+def _load_inpatients() -> dict:
+    """Score the inpatient vitals once (no trend, no symptom flags). Callers must copy before changing."""
+    patients = load_patients()
+    ids = set(patients.loc[patients["location"] == "INPATIENT", "patient_id"])
+    vitals = load_vitals()
+    ip = vitals[vitals["patient_id"].isin(ids)].sort_values(["patient_id", "ts"]).reset_index(drop=True)
+    plans = load_monitoring_plans().drop_duplicates("patient_id", keep="last")
+    scored = score_df(ip, plans)
+    scored["artefact"] = is_artefact(scored)
+    good = scored[~scored["artefact"]].merge(plans[_PLAN_COLUMNS], on="patient_id", how="left")
+    good = _add_plan_flags(good)
+    good["trend_flag"] = False
+    good["symptom_flag"] = False
+    good = good.sort_values(["patient_id", "ts"]).reset_index(drop=True)
+    logger.info("Loaded %d inpatient readings (%d good)", len(scored), len(good))
+    return {"all": scored, "good": good, "patients": sorted(ids)}
 
 
 def refresh() -> None:
@@ -115,9 +144,12 @@ _FLAG_COLUMNS = ["trend_flag", "symptom_flag", "urgent", "emergency", "plan_brea
 def readings(pid: str, clock: str | pd.Timestamp) -> pd.DataFrame:
     """Every reading of `pid` with ts <= clock (any signal quality), sorted by ts, as a new frame.
 
-    Same flags as the queue. Artefact rows carry no flags (all False). Unknown pid -> empty frame.
+    Same flags as the queue. Artefact rows carry no flags (all False). Inpatients are included (never a
+    trend or symptom flag). Unknown pid -> empty frame.
     """
     data = _load()
+    if pid not in data["patients"]:
+        data = _load_inpatients()
     cut = pd.Timestamp(clock)
     allr = data["all"]
     allr = allr[(allr["patient_id"] == pid) & (allr["ts"] <= cut)]
@@ -127,6 +159,33 @@ def readings(pid: str, clock: str | pd.Timestamp) -> pd.DataFrame:
     for col in _FLAG_COLUMNS:
         out[col] = out[col].fillna(False).astype(bool)
     return out[READING_COLUMNS].reset_index(drop=True)
+
+
+def inpatient_item(pid: str, clock: str | pd.Timestamp) -> QueueItem | None:
+    """Queue-style item for an inpatient from its latest good reading (None when there is none yet).
+
+    Same reason weights as get_ward_state (no trend or symptom). The queue itself stays virtual-ward only.
+    """
+    data = _load_inpatients()
+    cut = pd.Timestamp(clock)
+    good = data["good"]
+    good = good[(good["patient_id"] == pid) & (good["ts"] <= cut)]
+    if good.empty:
+        return None
+    r = good.iloc[-1]
+    reasons: list[Reason] = []
+    priority = 0
+    for reason, hit, weight in [("NEWS2_EMERGENCY", r["emergency"], 100), ("NEWS2_URGENT", r["urgent"], 50),
+                                ("PLAN_BREACH", r["plan_breach"], 20)]:
+        if hit:
+            reasons.append(reason)
+            priority += weight
+    priority += int(r["news2"])
+    first = good[good["urgent"] | good["emergency"]]
+    return QueueItem(
+        patient_id=pid, priority=int(priority), reasons=reasons, news2=int(r["news2"]),
+        news2_max_single=int(r["news2_max_single"]),
+        flagged_at=to_iso(first["ts"].iloc[0]) if not first.empty else None, evidence_ids=[])
 
 
 def get_ward_state(clock: str | pd.Timestamp, escalated: list[str] | None = None) -> WardState:

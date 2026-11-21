@@ -7,9 +7,10 @@ from ai.triage import classify, inbox
 from clinical.artefact import SIGNAL_QUALITY_MIN
 from clinical.decisions import message_reply_decision, record_decision, replied_message_ids
 from clinical.queue import get_ward_state, refresh
+from clinical.readmission import readmission_risk
 from core.contracts import WardState
 from core.loader import load_patients
-from ops.kpis import command_center_kpis, inpatient_overview, kpi_tiles
+from ops.kpis import command_center_kpis, incoming_24h, inpatient_overview, kpi_tiles
 
 
 @st.cache_data
@@ -20,6 +21,16 @@ def _ward_state(clock: str, escalated: tuple[str, ...]) -> WardState:
 @st.cache_data
 def _kpis(clock: str, escalated: tuple[str, ...]) -> list[dict]:
     return kpi_tiles(command_center_kpis(clock, list(escalated)))
+
+
+@st.cache_data
+def _readmission(clock: str, escalated: tuple[str, ...]) -> dict[str, float]:
+    return readmission_risk(clock, get_ward_state(clock, list(escalated)))
+
+
+@st.cache_data
+def _incoming(clock: str) -> dict:
+    return incoming_24h(clock)
 
 
 @st.cache_data
@@ -36,16 +47,26 @@ for _i in range(0, len(_tiles), 4):
     _row = _tiles[_i:_i + 4]
     for _col, _t in zip(st.columns(4), _row, strict=False):
         _col.metric(_t["label"], _t["value"], help=_t["help"])
+_inc = _incoming(st.session_state["clock"])
+st.metric("Expected incoming patients, next 24 h", f"≈ {round(_inc['total'])}")
+st.caption(f"{_inc['known']} known urgent admissions ({_inc['known_bed']} need a bed, "
+           f"{_inc['known_home']} could go direct to Sjukhus hemma) + {_inc['forecast']:.1f} from the "
+           "baseline forecast.")
 st.metric("Alerts suppressed", state.suppressed_alerts)
 
 st.subheader("Patients at home (virtual ward)")
+_risk = _readmission(st.session_state["clock"], tuple(st.session_state["escalated"]))
 st.dataframe(
     pd.DataFrame([
         {"patient_id": q.patient_id, "priority": q.priority, "reasons": ", ".join(q.reasons),
-         "news2": q.news2, "news2_max_single": q.news2_max_single, "flagged_at": q.flagged_at}
+         "news2": q.news2, "news2_max_single": q.news2_max_single, "flagged_at": q.flagged_at,
+         "readmission_risk": _risk.get(q.patient_id)}
         for q in state.queue
     ]),
     hide_index=True,
+    column_config={"readmission_risk": st.column_config.ProgressColumn(
+        "Readmission risk", format="percent", min_value=0, max_value=1,
+        help="Illustrative formula, not a validated model.")},
 )
 
 st.subheader("ATTENTION HERE")

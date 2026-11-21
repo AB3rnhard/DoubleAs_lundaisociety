@@ -7,6 +7,7 @@ from ai.factsheet import get_briefing
 from clinical.decisions import briefing_decision, record_decision
 from clinical.queue import get_ward_state
 from clinical.views import (
+    inpatients,
     news2_figure,
     patient_header,
     timeline,
@@ -14,6 +15,7 @@ from clinical.views import (
     vitals_figure,
 )
 from core.loader import load_patients
+from ops.kpis import inpatient_overview
 
 RED_REASONS = {"NEWS2_EMERGENCY", "NEWS2_URGENT"}
 AMBER_REASONS = {"TREND", "SYMPTOM_MESSAGE", "PLAN_BREACH"}
@@ -28,6 +30,17 @@ def _queue(clock: str) -> list[tuple[str, int, list[str]]]:
 def _names() -> dict[str, str]:
     p = load_patients()
     return dict(zip(p["patient_id"], p["name"], strict=True))
+
+
+@st.cache_data
+def _beds() -> dict[str, str]:
+    p = load_patients()
+    return dict(zip(p["patient_id"], p["bed_or_slot"], strict=True))
+
+
+@st.cache_data
+def _overview(clock: str) -> dict[str, dict]:
+    return {r["patient_id"]: r for r in inpatient_overview(clock)}
 
 
 @st.cache_data
@@ -130,7 +143,8 @@ def _decision_form(res: dict, pid: str, clock: str) -> None:
         label = st.radio("Decision", list(ACTIONS), horizontal=True, key=f"briefing_action_{suffix}")
         role = st.selectbox("Role", ["physician", "nurse"], key=f"briefing_role_{suffix}")
         text = st.text_area("Edited text (for Edit) or reason (for Reject)", key=f"briefing_text_{suffix}")
-        readmit = st.checkbox("Mark possible readmission", key=f"briefing_readmit_{suffix}")
+        readmit = (False if pid in inpatients() else
+                   st.checkbox("Mark possible readmission", key=f"briefing_readmit_{suffix}"))
         submitted = st.form_submit_button("Submit decision")
     if not submitted:
         return
@@ -154,8 +168,11 @@ def _sync_query_param() -> None:
 clock = st.session_state["clock"]
 queue = _queue(clock)
 names = _names()
-valid = virtual_ward_patients()
-order = [pid for pid, _, _ in queue if pid in valid]
+home = virtual_ward_patients()
+ward = inpatients()
+valid = [*home, *ward]
+order = [*[pid for pid, _, _ in queue if pid in home], *ward]
+beds = _beds()
 reasons_by_pid = {pid: reasons for pid, _, reasons in queue}
 
 requested = st.query_params.get("pid")
@@ -166,14 +183,21 @@ elif st.session_state.get("patient_pid") not in valid:
 
 pid = st.selectbox(
     "Patient", order, key="patient_pid", on_change=_sync_query_param,
-    format_func=lambda p: " - ".join([f"{p} {names.get(p, '')}".strip(), ", ".join(reasons_by_pid[p])]
-                                     if reasons_by_pid.get(p) else [f"{p} {names.get(p, '')}".strip()]))
+    format_func=lambda p: (f"{p} {names.get(p, '')} · inpatient {beds.get(p, '')}" if p in ward else
+                           " - ".join([f"{p} {names.get(p, '')}".strip(), ", ".join(reasons_by_pid[p])]
+                                      if reasons_by_pid.get(p) else [f"{p} {names.get(p, '')}".strip()])))
 
 h = _header(pid, clock)
 
 st.title(f"{h['name']}  ·  {h['patient_id']}")
+is_inpatient = h["location"] == "INPATIENT"
+stay = (f"of hospital stay · bed {h['bed_or_slot']}" if is_inpatient else "of virtual-ward stay")
 st.caption(f"{h['age']} {h['sex']} · {h['primary_diagnosis']} ({h['icd10']}) · day {h['day_of_stay']} "
-           f"of virtual-ward stay · {h['municipality']}")
+           f"{stay} · {h['municipality']}")
+if is_inpatient and pid in _overview(clock):
+    _o = _overview(clock)[pid]
+    st.caption(f"Home care: {_o['home_care'] or '-'} ({_o['reason'] or '-'}) · "
+               f"transfer risk {_o['transfer_risk']:.2f}")
 st.markdown(" ".join(_chip(r) for r in h["reasons"]) if h["reasons"] else ":gray-badge[No active flags]")
 
 m1, m2, m3 = st.columns(3)

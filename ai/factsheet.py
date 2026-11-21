@@ -123,10 +123,18 @@ def _plan_facts(plan, reasons: list[str], last) -> list[dict]:
     return facts
 
 
+def _stay_text(h: dict) -> str:
+    """Stay wording: unchanged for virtual-ward patients (warmed cache keys), hospital stay for inpatients."""
+    if h.get("location") == "INPATIENT":
+        return f"day {h['day_of_stay']} of hospital stay (bed {h['bed_or_slot']})"
+    return f"day {h['day_of_stay']} of virtual-ward stay"
+
+
 def _profile_text(h: dict) -> str:
     comorb = "; ".join(h["comorbidities"]) or "none recorded"
+    stay = _stay_text(h)
     return (f"{h['name']}, {h['age']} {h['sex']}. Diagnosis: {h['primary_diagnosis']} ({h['icd10']}). "
-            f"Comorbidities: {comorb}. Day {h['day_of_stay']} of virtual-ward stay. "
+            f"Comorbidities: {comorb}. {stay[0].upper() + stay[1:]}. "
             f"Lives alone: {'yes' if h['lives_alone'] else 'no'}. "
             f"Caregiver at home: {h['caregiver_at_home'] or 'none'}. "
             f"Current therapy: {h['current_therapy']}. Visits per day: {h['visits_per_day']}.")
@@ -173,7 +181,8 @@ def _build(pid: str, clock: str) -> dict:
                               "artefact, excluded from scoring, re-measure"})
 
     vitals = t["vitals"]
-    for d in deviations(pid, cut, vitals[vitals["patient_id"] == pid]):
+    inpatient = h.get("location") == "INPATIENT"
+    for d in ([] if inpatient else deviations(pid, cut, vitals[vitals["patient_id"] == pid])):
         p = d["param"]
         facts.append({"type": "deviation", "ts": d["ts"], "param": p,
                       "baseline_text": _med(d["baseline_median"]), "value_text": _fmt(p, d["value"]),
@@ -192,7 +201,7 @@ def _build(pid: str, clock: str) -> dict:
     msgs = msgs[(msgs["patient_id"] == pid) & (msgs["ts"] <= cut)].sort_values(["ts", "message_id"])
 
     profile_line = (f"{h['name']}, {h['age']} {h['sex']}, {h['primary_diagnosis']}, "
-                    f"day {h['day_of_stay']} of virtual-ward stay")
+                    f"{_stay_text(h)}")
     return {
         "patient_id": pid,
         "clock": to_iso(cut),

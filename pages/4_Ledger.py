@@ -37,7 +37,7 @@ cols[4].metric("Alerts suppressed", alerts["suppressed"],
 cols[5].metric("Artefacts caught", _artefacts(clock))
 
 if not rows:
-    st.info("No decisions yet: approve a briefing (Patient), reply in the Home Hospital Inbox (Patients Dashboard) "
+    st.info("No decisions yet: approve a briefing (Patients), reply in the Home Hospital Inbox (Patients Dashboard) "
             "or adopt a plan (Admission Planning).")
 else:
     f1, f2, f3 = st.columns(3)
