@@ -142,12 +142,14 @@ def run_whatif(n: int, ward_state: WardState, profile: Profile) -> Plan:
 if __name__ == "__main__":
     import time
 
+    from clinical.queue import get_ward_state
     from core import loader
-    from core.contracts import T0, fake_ward_state
+    from core.contracts import T0
     ref = loader.load_expected_results()
+    flagged = get_ward_state("2026-11-21T14:00").queue[0].patient_id  # top of the real queue once flagged
     for label, key, esc in (("+5", "whatif_plus5_reference", []),
-                            ("+5 & readmission", "whatif_plus5_with_P002_readmission_reference", [fake_ward_state().queue[0].patient_id])):
-        ws = fake_ward_state(clock=T0, escalated=esc)
+                            ("+5 & readmission", "whatif_plus5_with_P002_readmission_reference", [flagged])):
+        ws = get_ward_state(T0, esc)
         inp = build_inputs(5, ws)
         for prof in PROFILES:
             t = time.perf_counter()

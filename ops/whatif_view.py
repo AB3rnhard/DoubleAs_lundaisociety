@@ -98,16 +98,18 @@ def binding_resources(plan: Plan) -> list[str]:
 
 
 if __name__ == "__main__":
+    from clinical.queue import get_ward_state
     from core import loader
-    from core.contracts import T0, fake_plan, fake_ward_state
+    from core.contracts import T0
     from ops import eligibility, whatif_cpsat
-    ws = fake_ward_state(T0, ["P-002"])
+    esc = [get_ward_state("2026-11-21T14:00").queue[0].patient_id]  # top of the real queue once flagged
+    ws = get_ward_state(T0, esc)
     plans = whatif_cpsat.run_all_profiles(5, ws)
     names = dict(zip(loader.load_patients()["patient_id"], loader.load_patients()["name"], strict=True))
     adm = loader.load_admissions()
     elig = eligibility.evaluate(*eligibility.load_scored(T0), T0)
-    for pl in (*plans.values(), fake_plan()):
-        iid = plan_item_id(pl, T0, 5, ["P-002"])
+    for pl in plans.values():
+        iid = plan_item_id(pl, T0, 5, esc)
         print(iid, plan_summary(pl))
         print(describe_moves(pl, names, adm), binding_resources(pl))
         print(signoff_tasks(pl, iid, T0, elig))

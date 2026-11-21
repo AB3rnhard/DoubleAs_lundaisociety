@@ -10,8 +10,10 @@ import logging
 
 import pandas as pd
 
+from clinical.news2 import score_df
+from clinical.queue import get_ward_state
 from core import loader
-from core.contracts import T0, WardState, fake_ward_state
+from core.contracts import T0, WardState
 from ops import eligibility
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 def get_capacity(clock: str = T0, ward_state: WardState | None = None) -> dict:
     """Static capacity from resources.json; dynamics = cleaning kit ready time + escalated patients."""
     if ward_state is None:
-        ward_state = fake_ward_state(clock)
+        ward_state = get_ward_state(clock)
     res = loader.load_resources()
     patients = loader.load_patients()
     c = pd.Timestamp(clock)
@@ -70,11 +72,10 @@ def get_capacity(clock: str = T0, ward_state: WardState | None = None) -> dict:
 
 
 def _score(vitals: pd.DataFrame, plans: pd.DataFrame) -> pd.DataFrame:
-    from ops._news2 import resolve_score_df
-    return resolve_score_df()(vitals, plans)
+    return score_df(vitals, plans)
 
 
 if __name__ == "__main__":
     import json
     print(json.dumps(get_capacity(T0), indent=1))
-    print(json.dumps(get_capacity("2026-11-21T15:00", fake_ward_state(escalated=["P-002"])), indent=1))
+    print(json.dumps(get_capacity("2026-11-21T15:00", get_ward_state("2026-11-21T15:00", ["P-002"])), indent=1))

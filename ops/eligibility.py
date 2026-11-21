@@ -12,6 +12,7 @@ import unicodedata
 
 import pandas as pd
 
+from clinical.news2 import score_df
 from core import loader
 from core.contracts import T0
 
@@ -160,9 +161,8 @@ def evaluate(patients, vitals_scored, plans, notes, clock=T0, resources=None) ->
 
 def load_scored(clock=T0):
     """Convenience: (patients, scored vitals <= clock, plans, notes <= clock) via core.loader."""
-    from ops._news2 import resolve_score_df
     plans = loader.load_monitoring_plans()
-    vitals = resolve_score_df()(loader.at_clock(loader.load_vitals(), clock), plans)
+    vitals = score_df(loader.at_clock(loader.load_vitals(), clock), plans)
     return loader.load_patients(), vitals, plans, loader.at_clock(loader.load_notes(), clock)
 
 

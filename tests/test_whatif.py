@@ -145,3 +145,17 @@ def test_no_patient_specific_logic():
     for f in ("whatif_model.py", "whatif_cpsat.py", "greedy.py"):
         text = (ROOT / "ops" / f).read_text(encoding="utf-8")
         assert not rx.search(text), f
+
+
+def test_real_ward_state_escalation_drives_the_whatif():
+    """Story link: Patient page escalates a pid -> get_ward_state(..., escalated) -> run_whatif (real queue, no fakes)."""
+    from clinical.queue import get_ward_state
+    pid = get_ward_state("2026-11-21T14:00").queue[0].patient_id  # top of the queue once flagged (14:00 story clock)
+    for key, esc in ((BASE, []), (READMIT, [pid])):
+        state = get_ward_state(T0, esc)
+        assert state.escalated == esc
+        for p in PROFILES:
+            r, pl = EXP[key][p], whatif_cpsat.run_whatif(5, state, p)
+            assert pl.objective == pytest.approx(r["objective"], abs=0.01)
+            assert (pl.placed, pl.needing_placement, pl.external_transfers) == (
+                r["placed"], r["patients_needing_placement"], r["external_transfers"])

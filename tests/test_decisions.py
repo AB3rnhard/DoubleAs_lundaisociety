@@ -12,6 +12,7 @@ from core import ledger
 from core.contracts import Decision, to_dict
 
 CLOCK = "2026-11-21T13:00"
+REAL_RECORD = ledger.record  # the autouse fixture removes it from the module for the "no ledger" tests
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +91,7 @@ def test_message_reply_decision_approve_when_text_equals_draft():
     assert (d.ts, d.patient_id, d.item_type, d.item_id) == ("2026-11-21T13:00", "P-002", "message_reply", "RPL-M-009")
     assert (d.clinician_action, d.clinician_role, d.evidence_ids) == ("approve", "nurse", ["M-009"])
     shown = json.loads(d.ai_suggestion)
-    assert set(shown) == {"source", "triage"} and shown["triage"]["draft_reply"] == draft
+    assert set(shown) == {"source", "prompt_version", "triage"} and shown["triage"]["draft_reply"] == draft
     assert shown["source"] == item["triage"]["source"]
 
 
@@ -111,3 +112,17 @@ def test_replied_message_ids_from_the_ledger_when_it_can_list(monkeypatch):
     rows = [decisions.message_reply_decision(_item("M-012"), "text", CLOCK), _decision(1)]
     monkeypatch.setattr(ledger, "list_decisions", lambda: rows, raising=False)
     assert decisions.replied_message_ids() == {"M-012"}
+
+
+def test_briefing_and_reply_reach_the_real_ledger_unchanged(monkeypatch):
+    monkeypatch.setattr(ledger, "record", REAL_RECORD, raising=False)
+    brief = decisions.briefing_decision(get_briefing("P-002", CLOCK, live=False), "approve", "physician", "ok", CLOCK)
+    item = inbox(CLOCK)[0]
+    reply = decisions.message_reply_decision(item, "We will call you.", CLOCK)
+    assert decisions.record_decision(brief) == "ledger" and decisions.record_decision(reply) == "ledger"
+    assert decisions.list_pending() == []
+    got = {d.item_id: d for d in ledger.list_decisions()}
+    assert got[brief.item_id] == brief and got[reply.item_id] == reply  # incl. evidence_ids and ai_suggestion JSON
+    for d in (brief, reply):
+        assert json.loads(d.ai_suggestion)["prompt_version"]
+    assert decisions.replied_message_ids() == {item["message_id"]}

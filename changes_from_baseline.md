@@ -260,14 +260,14 @@ Message: ...`) | A classification warmed with another model is still found. Brie
 - [x] 4. B5 Ledger page: DONE (B5) `pages/4_Ledger.py` reads ledger + pending rows. Original note: read decisions from `core.ledger.list_decisions()` and, until item 1 is done, also
   `clinical.decisions.list_pending()`. Briefing rows have `item_type="briefing"`, `item_id="BRF-<pid>-<HHMM>"`,
   `ai_suggestion` = JSON with `source`.
-- [ ] 5. Escalation: `st.session_state["escalated"]` is filled by the Patient page form; B3 reads it (no change
-  needed, listed for the I1 story check).
+- [x] 5. Escalation: `st.session_state["escalated"]` is filled by the Patient page form; B3 reads it (no change
+  needed, listed for the I1 story check). - done in C2: integration test `test_real_ward_state_escalation_drives_the_whatif` (real `get_ward_state` -> `run_whatif`, 3 profiles, with and without escalation, numbers from `expected_results.json`).
 - [x] 6. B5 Ledger page: DONE (B5) reply rows are shown (type `message_reply`, reason = text sent). Original note: reply rows have `item_type="message_reply"`, `item_id="RPL-<message_id>"`,
   `clinician_role="nurse"`, `reason` = the text sent; they are in the pending file until item 1 is done.
 - [x] 7. B5 KPI strip: DONE (B5, agreed with A) six tiles from `ops.kpis` above the existing metric; nothing else on the page touched. Original note: B5 KPI strip on the Command Center: add it above the existing content; the inbox is one function
   `_inbox_section(clock)` at the end of the page, so the edits do not overlap. B edits A's page only with A's OK.
 - [ ] 8. I2 cache warming: briefing cache keys include the model (A4), triage keys do not. Warm the briefings with
-  the model the demo will run with (`CLAUDE_RUNTIME_MODEL`), or the demo falls back to the rule-based summary.
+  the model the demo will run with (`CLAUDE_RUNTIME_MODEL`), or the demo falls back to the rule-based summary. - still open: for I2 (shared); the demo model is `CLAUDE_RUNTIME_MODEL`, default `claude-haiku-5-5`.
 
 ## 11.B Deviations found while building B5 (Ledger page, KPIs, explainer realignment)
 
@@ -283,3 +283,27 @@ Message: ...`) | A classification warmed with another model is still found. Brie
 | Sign-off tasks | Approve / Reject on the Ledger page | Reject needs a reason; the task list is replaced (not mutated); a task with a sign-off row already in the ledger is closed without a second row | No duplicates |
 | Explainer realignment | Use `ai.verifier.verify` | `verify` accepts `deterministic_explanation` in all 6 scenarios. Claim granularity is coarser: one claim per plan item / binding constraint plus `decision_needed` (5 claims), instead of one per sentence; the structural checks stay local. With `live=False` the cache is now read (keys `K` and `K\|retry`); a cached invalid draft without a cached retry is shown as "withheld" | `verify` treats a dict with `evidence_ids` as one claim |
 | Explainer tests | Keep B4 tests green | Updated: retry key `\|retry`, `FakeClient` signature (`prompt_version`, `cache_only`), `live=False` is cache-only (was: no call). Removed the two tests of the deleted local checker | Behaviour intentionally changed |
+
+## 12. Integration C2 - realignment of A and B (21 Nov 2026)
+
+Branch `feat/realign`. No C1 report existed; the work list was the wiki and a code search. Decisions agreed before the work: skip the
+import script (use B5's `core.ledger.import_pending`), keep `ai/cache` as the AI cache, keep `get_capacity(clock, ward_state=None)` but
+default to the real `get_ward_state`.
+
+| # | Item | Source | Change | Owner | Test |
+|---|---|---|---|---|---|
+| 1 | Decisions -> ledger | Realignment item 1 | `record_decision` already calls `core.ledger.record`; docstring of `clinical/decisions.py` and the two page messages reworded (the pending file is only a fallback). Ran `python -m core.ledger --import-pending` once: 1 row imported, 0 on rerun, file renamed `decisions_pending.jsonl.imported-202611211559`. No `scripts/import_pending_decisions.py` (duplicate of B5's importer) | A / B | `test_briefing_and_reply_reach_the_real_ledger_unchanged` |
+| 2 | AI cache backend | Realignment item 2 | Files in `ai/cache` stay. `core/ledger.py` docstring marks `cache_get/cache_put` as unused. `ledger.db` held 0 cached rows, nothing migrated. CLAUDE.md untouched | B | existing `test_ledger.py` cache test |
+| 3 | B4 explainer | Realignment item 3 | Already done in B5; no change | B | `test_explainer.py` valid / bad-output tests |
+| 4 | Ledger page and prompt version | Realignment items 4, 6 | `ai_suggestion` JSON of briefings and replies now has `prompt_version`; `ops.ledger_view.prompt_version_of` reads it (old rows still derive it from `source`) | A / B | `test_page_shows_decisions_recorded_through_clinical_decisions`; `test_message_reply_decision_approve_when_text_equals_draft` updated |
+| 5 | Escalation coupling | Realignment item 5 | Test only: `get_ward_state(T0, escalated)` -> `run_whatif` for all profiles equals the `expected_results` references with and without the escalated patient (patient id from the 14:00 queue, no literal) | B (test) | `test_real_ward_state_escalation_drives_the_whatif` |
+| 6 | B1 NEWS2 fallback | 7.B | `ops/_news2.py` deleted; `ops/capacity.py` and `ops/eligibility.py` import `clinical.news2.score_df` | B | `test_eligibility.py`, `test_whatif.py`, whole suite |
+| 7 | Fakes | Code search | `get_capacity` defaults to `get_ward_state(clock)`; `__main__` blocks of `ops/capacity`, `whatif_cpsat`, `greedy`, `whatif_view` and `ai/explainer` use the real queue. `fake_*` stay in `core/contracts.py` and tests | B | `test_no_fakes_in_app_code` |
+| 8 | Command Center KPIs | Realignment item 7 | Added check that the suppressed tile equals `WardState.suppressed_alerts` at 09:00, 13:00, 21:00 | B (test) | `test_suppressed_tile_equals_ward_state` |
+| 9 | Cache warming | Realignment item 8 | Left open for I2 | shared | - |
+
+Notes: briefing key includes the model, triage key does not (see item 8 above). The 8 untracked files in `ai/cache/` were there before C2
+and are not part of it. `ops.greedy` `max_capacity` still differs from the reference (known, fallback only, see 8.B).
+
+Still open: I2 cache warming with the demo model (`CLAUDE_RUNTIME_MODEL`); decide whether CLAUDE.md "Interfaces" should drop the
+`cache_get/cache_put` line (shared, `contracts:` commit); the 8 untracked cache files in `ai/cache/` (commit as demo cache or delete).

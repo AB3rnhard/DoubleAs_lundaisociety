@@ -78,7 +78,7 @@ def prompt_version_of(row: dict) -> str:
         data = _json(row.get("ai_suggestion") or "")
         if not (isinstance(data, dict) and data.get("source") == "claude"):
             return "rule-based"
-        return BRIEFING_PROMPT_VERSION if kind == "briefing" else TRIAGE_PROMPT_VERSION
+        return data.get("prompt_version") or (BRIEFING_PROMPT_VERSION if kind == "briefing" else TRIAGE_PROMPT_VERSION)
     if kind == "capacity_plan":
         return "solver"
     return ""

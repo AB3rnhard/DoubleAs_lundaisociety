@@ -83,3 +83,9 @@ def test_no_patient_specific_logic():
     src = (Path(__file__).resolve().parent.parent / "ops" / "kpis.py").read_text(encoding="utf-8")
     body = src.split('if __name__ == "__main__":')[0]
     assert not re.search(r"[\"'](P|I|A)-\d", body)
+
+
+@pytest.mark.parametrize("h", ["09:00", "13:00", "21:00"])
+def test_suppressed_tile_equals_ward_state(h):
+    from clinical.queue import get_ward_state
+    assert kpis.alert_kpis(C[h])["suppressed"] == get_ward_state(C[h]).suppressed_alerts

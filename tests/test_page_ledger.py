@@ -167,3 +167,21 @@ def test_signoff_reject_needs_reason():
     row = ledger.list_rows(item_type="signoff")[0]
     assert row["clinician_action"] == "reject" and row["reason"] == "Not safe"
     assert at.session_state["tasks"][0]["status"] == "rejected"
+
+
+def test_page_shows_decisions_recorded_through_clinical_decisions(monkeypatch):
+    """A's record_decision -> real ledger -> page rows, counters and prompt-version column (no pending file)."""
+    from core.ledger import record as real_record
+    monkeypatch.setattr(ledger, "record", real_record, raising=False)
+    res = get_briefing("P-002", C13, live=False)
+    assert cd.record_decision(cd.briefing_decision(res, "reject", "On-call physician", "not agreed", C13)) == "ledger"
+    item = inbox(C14)[0]
+    assert cd.record_decision(cd.message_reply_decision(item, "Thanks, we will call you.", C14)) == "ledger"
+    at = make()
+    assert not at.exception
+    df = at.dataframe[0].value
+    assert list(df["type"]) == ["message_reply", "briefing"] and list(df["stored"]) == ["ledger", "ledger"]
+    assert df["item_id"][0] == f"RPL-{item['message_id']}" and df["item_id"][1] == "BRF-P-002-1300"
+    assert all(v for v in df["prompt version"])
+    m = {x.label: x.value for x in at.metric}
+    assert (m["AI suggestions approved"], m["AI suggestions edited"], m["AI suggestions rejected"]) == ("0", "1", "1")

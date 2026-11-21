@@ -142,7 +142,7 @@ def _decision_form(res: dict, pid: str, clock: str) -> None:
     if readmit and pid not in st.session_state["escalated"]:
         st.session_state["escalated"] = [*st.session_state["escalated"], pid]
     target = ("the ledger" if where == "ledger"
-              else "the pending decisions file (logs/decisions_pending.jsonl), until the ledger exists")
+              else "the pending decisions file (logs/decisions_pending.jsonl), to be imported into the ledger")
     st.success(f"Decision '{action}' by {role} recorded in {target}. "
                f"Possible readmissions: {', '.join(st.session_state['escalated']) or 'none'}.")
 
