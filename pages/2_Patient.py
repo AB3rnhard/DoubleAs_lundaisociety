@@ -224,7 +224,7 @@ with st.container(border=True):
                + (" · retried once" if res["retried"] else ""))
     _render_briefing(res)
     st.divider()
-    st.markdown("**Clinician decision**")
+    st.markdown("**Clinician review: do you agree with the AI summary?**")
     if pid in st.session_state["escalated"]:
         st.markdown(":red-badge[Marked for possible readmission]")
     _decision_form(res, pid, clock)

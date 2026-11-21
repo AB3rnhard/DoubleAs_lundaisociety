@@ -37,8 +37,8 @@ cols[4].metric("Alerts suppressed", alerts["suppressed"],
 cols[5].metric("Artefacts caught", _artefacts(clock))
 
 if not rows:
-    st.info("No decisions yet: approve a briefing (Patient), reply in the Inbox (Command Center) "
-            "or adopt a plan (Capacity & What-if).")
+    st.info("No decisions yet: approve a briefing (Patient), reply in the Home Hospital Inbox (Patients Dashboard) "
+            "or adopt a plan (Admission Planning).")
 else:
     f1, f2, f3 = st.columns(3)
     pids = f1.multiselect("Patient", sorted({r["patient_id"] for r in rows}), key="led_pid")
@@ -64,7 +64,7 @@ else:
 open_tasks = [t for t in st.session_state["tasks"] if t.get("status") == "open"]
 with st.expander(f"Sign-off tasks ({len(open_tasks)} open)", expanded=bool(open_tasks)):
     if not open_tasks:
-        st.caption("No open sign-off tasks. Adopting a plan on Capacity & What-if creates them.")
+        st.caption("No open sign-off tasks. Adopting a plan on Admission Planning creates them.")
     done_ids = {r["item_id"] for r in rows if r["item_type"] == "signoff"}
     for t in open_tasks:
         tid = t["task_id"]

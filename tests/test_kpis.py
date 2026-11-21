@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from core import loader
-from ops import kpis
+from core.contracts import T0
+from ops import eligibility, kpis
 
 EXP = loader.load_expected_results()
 BURDEN = EXP["alert_burden_virtual_ward_84h"]
@@ -60,8 +61,11 @@ def test_nothing_at_09():
 def test_kpi_tiles_derived_from_dicts(h):
     k = kpis.command_center_kpis(C[h], [])
     tiles = {t["label"]: t for t in kpis.kpi_tiles(k)}
-    assert list(tiles) == ["Alerts suppressed", "Patients flagged", "Earliest flag vs NEWS2", "Beds", "Kits free",
-                           "Visits"]
+    assert list(tiles) == ["Alerts suppressed", "Patients flagged", "Earliest flag vs NEWS2", "Patients at home",
+                           "Virtual slots used", "Beds", "Kits free", "Visits"]
+    vw = loader.load_resources()["virtual_ward"]
+    assert tiles["Patients at home"]["value"] == str(vw["occupied"])
+    assert tiles["Virtual slots used"]["value"] == f"{vw['occupied']}/{vw['slots_total']}"
     a, cap = k["alerts"], k["capacity"]
     assert tiles["Alerts suppressed"]["value"] == f"{a['suppressed']} ({a['naive']} -> {a['plan_aware']})"
     assert tiles["Patients flagged"]["value"] == str(k["patients_flagged"])
@@ -77,6 +81,23 @@ def test_kpi_tiles_derived_from_dicts(h):
         assert lead == f"{REF['lead_time_hours_fused_vs_news2']:g} h earlier"
     if h == "09:00":
         assert "+" in tiles["Kits free"]["value"]  # cleaning kit still to come
+
+
+def test_inpatient_overview_matches_reference_at_t0():
+    rows = kpis.inpatient_overview(T0)
+    pts = loader.load_patients()
+    inp = pts[pts["location"] == "INPATIENT"]
+    assert sorted(r["patient_id"] for r in rows) == sorted(inp["patient_id"])
+    n2, risk = EXP["inpatient_news2_last24h"], EXP["inpatient_transfer_risk_score"]
+    loaded = eligibility.load_scored(T0)
+    ev = eligibility.evaluate(*loaded, T0)
+    status = ev[ev["pathway"] == "home_transfer"].set_index("patient_id")["status"]
+    for r in rows:
+        pid = r["patient_id"]
+        assert r["news2_max_24h"] == n2[pid]["max"]
+        assert r["news2_mean_24h"] == pytest.approx(n2[pid]["mean"], abs=0.01)
+        assert r["transfer_risk"] == pytest.approx(risk[pid])
+        assert r["home_care_status"] == status[pid]
 
 
 def test_no_patient_specific_logic():

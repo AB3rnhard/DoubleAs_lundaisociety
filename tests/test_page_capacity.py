@@ -47,7 +47,7 @@ def test_loads_with_five_metrics():
     at = make()
     assert not at.exception
     assert len(at.metric) == 5
-    assert at.title[0].value == "Capacity & What-if"
+    assert at.title[0].value == "Admission Planning"
 
 
 def test_find_plans_matches_reference():

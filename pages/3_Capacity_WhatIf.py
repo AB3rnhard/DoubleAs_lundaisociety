@@ -279,7 +279,7 @@ elig = _eligibility(clock)
 ctx = {"clock": clock, "escalated": escalated, "names": names, "cap": cap, "elig": elig,
        "admissions": _admissions(), "notes": _notes(clock)}
 
-st.title("Capacity & What-if")
+st.title("Admission Planning")
 st.caption(f"Clock {clock[11:16]}")
 _kpis(cap)
 if escalated:

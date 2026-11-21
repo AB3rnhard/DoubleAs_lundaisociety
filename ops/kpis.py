@@ -3,7 +3,7 @@
 Owner: B (Teammate B). Built in prompt B5.
 
 Public interface: alert_kpis, artefacts_caught, lead_times, earliest_lead, patients_flagged,
-                  command_center_kpis, kpi_tiles.
+                  command_center_kpis, kpi_tiles, inpatient_overview.
 
 Everything is computed from data with ts <= clock (clinical.queue already filters), so there is no look-ahead.
 Alert counts cover all data up to the clock ("since monitoring start"), not a calendar day.
@@ -15,6 +15,7 @@ import logging
 import pandas as pd
 
 from clinical import queue
+from ops import eligibility
 from ops.capacity import get_capacity
 
 logger = logging.getLogger(__name__)
@@ -110,17 +111,48 @@ def kpi_tiles(kpis: dict) -> list[dict]:
         lead_help = f"{lead['patient_id']}: first {lead['flag_kind']} flag; the NEWS2 trigger has not happened yet."
     k = cap["kits"]
     kits = f"{k['free']}" + (f" (+{k['in_cleaning']} at {k['cleaning_ready_at'][11:]})" if k["in_cleaning"] else "")
-    v, b = cap["visits"], cap["beds"]
+    v, b, vs = cap["visits"], cap["beds"], cap["virtual_slots"]
     return [
         {"label": "Alerts suppressed", "value": f"{a['suppressed']} ({a['naive']} -> {a['plan_aware']})",
          "help": "Since monitoring start: naive Scale 1 alerts -> plan-aware alerts (own plan scale, artefacts removed)."},
         {"label": "Patients flagged", "value": str(kpis["patients_flagged"]),
          "help": "Virtual-ward patients with a trend, symptom, NEWS2 or plan-breach flag now."},
         {"label": "Earliest flag vs NEWS2", "value": lead_value, "help": lead_help},
+        {"label": "Patients at home", "value": str(vs["occupied"]),
+         "help": "Patients in the virtual ward (Sjukhus hemma) now. A patient marked for possible readmission "
+                 "stays counted until moved."},
+        {"label": "Virtual slots used", "value": f"{vs['occupied']}/{vs['total']}",
+         "help": "Occupied / total virtual-ward slots (same as Admission Planning)."},
         {"label": "Beds", "value": f"{b['occupied']}/{b['total']}", "help": "Occupied / total physical beds."},
         {"label": "Kits free", "value": kits, "help": "Free monitoring kits; cleaning kits return when ready."},
         {"label": "Visits", "value": f"{v['booked']}/{v['capacity']}", "help": "Booked / capacity of home visits today."},
     ]
+
+
+def inpatient_overview(clock: str) -> list[dict]:
+    """One row per inpatient: NEWS2 last 24 h, home-care eligibility (ops.eligibility), transfer risk, planned discharge."""
+    loaded = eligibility.load_scored(clock)
+    patients, scored = loaded[0], loaded[1]
+    stats = eligibility.news2_last24h(scored, clock).set_index("patient_id")
+    ev = eligibility.evaluate(*loaded, clock)
+    ev = ev[ev["pathway"] == "home_transfer"].set_index("patient_id")
+    risk = eligibility.transfer_risk(scored, clock, patients)
+    rows = []
+    for p in patients[patients["location"] == "INPATIENT"].itertuples():
+        pid = p.patient_id
+        has = pid in stats.index
+        status = ev.loc[pid, "status"] if pid in ev.index else ""
+        pd_at = pd.Timestamp(p.planned_discharge_at) if pd.notna(p.planned_discharge_at) else None
+        rows.append({
+            "patient_id": pid, "name": p.name, "bed": p.bed_or_slot, "diagnosis": p.primary_diagnosis,
+            "news2_max_24h": int(stats.loc[pid, "max"]) if has else None,
+            "news2_mean_24h": round(float(stats.loc[pid, "mean"]), 2) if has else None,
+            "home_care": eligibility.STATUS_GROUP.get(status, ""), "home_care_status": status,
+            "reason": "; ".join(ev.loc[pid, "reasons"]) if pid in ev.index else "",
+            "transfer_risk": risk.get(pid), "planned_discharge": pd_at.strftime("%H:%M") if pd_at else "",
+        })
+    rows.sort(key=lambda r: (r["news2_max_24h"] is None, -(r["news2_max_24h"] or 0), r["bed"]))
+    return rows
 
 
 if __name__ == "__main__":
@@ -129,3 +161,10 @@ if __name__ == "__main__":
         _k = command_center_kpis(_c, [])
         print(_c, [(t["label"], t["value"]) for t in kpi_tiles(_k)])
         print("  lead_times:", lead_times(_c))
+    import time
+    _t0 = time.perf_counter()
+    _rows = inpatient_overview("2026-11-21T13:00")
+    _dt = time.perf_counter() - _t0
+    for _r in _rows:
+        print(_r)
+    print(f"inpatient_overview 13:00: {len(_rows)} rows in {_dt:.2f} s")

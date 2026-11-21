@@ -4,11 +4,12 @@ import pandas as pd
 import streamlit as st
 
 from ai.triage import classify, inbox
+from clinical.artefact import SIGNAL_QUALITY_MIN
 from clinical.decisions import message_reply_decision, record_decision, replied_message_ids
 from clinical.queue import get_ward_state, refresh
 from core.contracts import WardState
 from core.loader import load_patients
-from ops.kpis import command_center_kpis, kpi_tiles
+from ops.kpis import command_center_kpis, inpatient_overview, kpi_tiles
 
 
 @st.cache_data
@@ -21,15 +22,23 @@ def _kpis(clock: str, escalated: tuple[str, ...]) -> list[dict]:
     return kpi_tiles(command_center_kpis(clock, list(escalated)))
 
 
+@st.cache_data
+def _hospital(clock: str) -> list[dict]:
+    return inpatient_overview(clock)
+
+
 state = _ward_state(st.session_state["clock"], tuple(st.session_state["escalated"]))
 
-st.title("Command Center")
+st.title("Patients Dashboard")
 st.write("Clock:", state.clock)
 _tiles = _kpis(st.session_state["clock"], tuple(st.session_state["escalated"]))
-for _col, _t in zip(st.columns(len(_tiles)), _tiles, strict=True):
-    _col.metric(_t["label"], _t["value"], help=_t["help"])
+for _i in range(0, len(_tiles), 4):
+    _row = _tiles[_i:_i + 4]
+    for _col, _t in zip(st.columns(4), _row, strict=False):
+        _col.metric(_t["label"], _t["value"], help=_t["help"])
 st.metric("Alerts suppressed", state.suppressed_alerts)
 
+st.subheader("Patients at home (virtual ward)")
 st.dataframe(
     pd.DataFrame([
         {"patient_id": q.patient_id, "priority": q.priority, "reasons": ", ".join(q.reasons),
@@ -39,11 +48,13 @@ st.dataframe(
     hide_index=True,
 )
 
-st.subheader("Artefacts")
+st.subheader("ATTENTION HERE")
+st.caption(f"Readings with low signal quality (signal_quality < {SIGNAL_QUALITY_MIN}): "
+           "excluded from alerting, re-measure.")
 if state.artefacts:
     st.dataframe(pd.DataFrame(state.artefacts), hide_index=True)
 else:
-    st.caption("No artefacts")
+    st.caption("No low-signal readings up to the clock.")
 
 
 # ---------- Inbox (A5): triaged patient messages and nurse replies ----------
@@ -102,7 +113,7 @@ def _message_card(item: dict, clock: str, replied: set[str], names: dict[str, st
 
 
 def _inbox_section(clock: str) -> None:
-    st.subheader("Inbox")
+    st.subheader("Home Hospital Inbox")
     demo = os.environ.get("DEMO_MODE") == "1"
     items = _inbox(clock)
     replied = replied_message_ids()
@@ -137,4 +148,43 @@ def _inbox_section(clock: str) -> None:
                 _message_card(i, clock, replied, names)
 
 
+# ---------- Hospital overview: inpatients (ops.eligibility, no new scoring) ----------
+def _hospital_section(clock: str, escalated: list[str]) -> None:
+    rows = _hospital(clock)
+    st.subheader("Patients at the hospital (inpatients)")
+    n_s = sum(r["home_care"] == "Suitable" for r in rows)
+    n_a = sum(r["home_care"] == "Needs assessment" for r in rows)
+    n_x = sum(r["home_care"] == "Not eligible" for r in rows)
+    st.caption(f"{len(rows)} inpatients · home transfer: {n_s} suitable, {n_a} need assessment, "
+               f"{n_x} not eligible")
+    st.dataframe(
+        pd.DataFrame([
+            {"bed": r["bed"], "patient": f"{r['patient_id']} {r['name']}", "diagnosis": r["diagnosis"],
+             "news2_max_24h": r["news2_max_24h"], "news2_mean_24h": r["news2_mean_24h"],
+             "home_care": r["home_care"], "why": r["reason"], "transfer_risk": r["transfer_risk"],
+             "planned_discharge": r["planned_discharge"]}
+            for r in rows
+        ]),
+        hide_index=True,
+        column_config={
+            "bed": st.column_config.TextColumn("Bed"),
+            "patient": st.column_config.TextColumn("Patient"),
+            "diagnosis": st.column_config.TextColumn("Diagnosis"),
+            "news2_max_24h": st.column_config.NumberColumn("NEWS2 max 24 h", format="%d"),
+            "news2_mean_24h": st.column_config.NumberColumn("NEWS2 mean 24 h", format="%.2f"),
+            "home_care": st.column_config.TextColumn("Home care"),
+            "why": st.column_config.TextColumn("Why"),
+            "transfer_risk": st.column_config.NumberColumn("Transfer risk", format="%.2f"),
+            "planned_discharge": st.column_config.TextColumn("Planned discharge"),
+        },
+    )
+    names = _names()
+    for pid in escalated:
+        st.markdown(f":orange-badge[Possible readmission] {pid} {names.get(pid, '')}: "
+                    "at home now, needs a bed")
+    st.caption("Home-care status and reasons come from the Admission Planning eligibility board; "
+               "act on them there.")
+
+
+_hospital_section(state.clock, list(st.session_state["escalated"]))
 _inbox_section(state.clock)

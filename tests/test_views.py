@@ -325,9 +325,26 @@ def test_command_center_inbox_has_one_reply_box_per_message(hour):
     assert not at.exception
     boxes = [t for t in at.text_area if t.key and t.key.startswith("inbox_reply_")]
     assert len(boxes) == _n_messages(clock)
-    assert "Inbox" in [s.value for s in at.subheader]
+    assert "Home Hospital Inbox" in [s.value for s in at.subheader]
     assert any("DEMO_MODE=1" in c.value for c in at.caption)
     assert at.metric[-1].label == "Messages needing a clinician (not replied)"
+
+
+def test_command_center_d0_layout_at_13():
+    at = _command_center(f"{DAY}T13:00")
+    assert not at.exception
+    assert at.title[0].value == "Patients Dashboard"
+    heads = [s.value for s in at.subheader]
+    order = ["Patients at home (virtual ward)", "ATTENTION HERE", "Patients at the hospital (inpatients)",
+             "Home Hospital Inbox"]
+    assert [heads.index(h) for h in order] == sorted(heads.index(h) for h in order)
+    labels = [m.label for m in at.metric]
+    for t in ["Alerts suppressed", "Patients flagged", "Earliest flag vs NEWS2", "Patients at home",
+              "Virtual slots used", "Beds", "Kits free", "Visits"]:
+        assert t in labels
+    p = load_patients()
+    n_inp = int((p["location"] == "INPATIENT").sum())
+    assert any(len(d.value) == n_inp for d in at.dataframe)
 
 
 def test_command_center_older_messages_are_in_a_collapsed_expander():
