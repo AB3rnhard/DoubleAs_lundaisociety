@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make *)", "Bash(pytest *)", "Bash(python *)", "Bash(ruff *)", "Bash(streamlit *)",
+      "Bash(git status)", "Bash(git diff *)", "Bash(git add *)", "Bash(git commit *)",
+      "PowerShell(.\\tasks.ps1 *)", "PowerShell(.venv\\Scripts\\python *)",
+      "PowerShell(pytest *)", "PowerShell(python *)", "PowerShell(ruff *)", "PowerShell(streamlit *)",
+      "PowerShell(git status)", "PowerShell(git diff *)", "PowerShell(git add *)", "PowerShell(git commit *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Bash(git push --force *)", "Bash(rm -rf *)",
+      "PowerShell(git push --force *)", "PowerShell(Remove-Item -Recurse *)"
+    ]
+  }
+}

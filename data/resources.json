@@ -1,0 +1,93 @@
+{
+  "as_of": "2026-11-21T09:00",
+  "ward": "Demo Medical Ward M-Lund (fictional; parameters inspired by SUS Sjukhus hemma, Lund/Malmo)",
+  "physical_beds": {
+    "total": 12,
+    "occupied": 12,
+    "overflow_beds_max": 1,
+    "overflow_note": "Overflow bed (overbelaggning) is a patient-safety risk; regional target < 1 per 100 beds"
+  },
+  "virtual_ward": {
+    "slots_total": 18,
+    "occupied": 14,
+    "visit_hours": "07:00-24:00 (17 h); night = phone + direct admission"
+  },
+  "monitoring_kits": {
+    "total": 17,
+    "in_use": 14,
+    "available_now": 2,
+    "in_cleaning": 1,
+    "cleaning_ready_at": "2026-11-21T15:00"
+  },
+  "mobile_teams": [
+    {
+      "team_id": "T1",
+      "members": [
+        "RN",
+        "Assistant nurse"
+      ],
+      "shift": "07:00-15:30 + 15:00-24:00",
+      "visit_capacity_per_day": 10,
+      "base_zone": "Lund"
+    },
+    {
+      "team_id": "T2",
+      "members": [
+        "RN",
+        "Assistant nurse"
+      ],
+      "shift": "07:00-15:30 + 15:00-24:00",
+      "visit_capacity_per_day": 10,
+      "base_zone": "Malmo/Burlov"
+    },
+    {
+      "team_id": "T3",
+      "members": [
+        "RN",
+        "Physician (part-time)"
+      ],
+      "shift": "07:00-15:30 + 15:00-24:00",
+      "visit_capacity_per_day": 10,
+      "base_zone": "North (Eslov/Hoor/Horby/Kavlinge)"
+    }
+  ],
+  "visits_booked_today": 26,
+  "overtime": {
+    "extra_team_available": true,
+    "extra_visit_capacity": 5,
+    "cost_sek": 9500
+  },
+  "primary_care_handover": {
+    "team": "Mobil narsjukvard (primary care mobile team)",
+    "capacity_today": 2
+  },
+  "transfer_out": {
+    "destination": "Neighbouring hospital (fictional)",
+    "cost_sek_per_patient": 15000,
+    "transport_hours": 2
+  },
+  "physician_video_review_slots_today": 4,
+  "catchment_municipalities": [
+    "Burlov",
+    "Eslov",
+    "Horby",
+    "Hoor",
+    "Kavlinge",
+    "Lomma",
+    "Lund",
+    "Malmo",
+    "Staffanstorp"
+  ],
+  "approx_drive_minutes_from_lund": {
+    "Lund": 10,
+    "Lomma": 20,
+    "Staffanstorp": 20,
+    "Kavlinge": 25,
+    "Burlov": 25,
+    "Malmo": 30,
+    "Eslov": 30,
+    "Hoor": 40,
+    "Horby": 45,
+    "Trelleborg": 50
+  }
+}

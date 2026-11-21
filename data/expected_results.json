@@ -1,0 +1,379 @@
+{
+  "P-002": {
+    "news2_at_T0": 0,
+    "first_news2_ge5": "2026-11-21T17:00",
+    "first_single_param_3": "2026-11-21T21:00",
+    "news2_by_hour_stream": {
+      "10:00": 0,
+      "11:00": 0,
+      "12:00": 0,
+      "13:00": 0,
+      "14:00": 2,
+      "15:00": 3,
+      "16:00": 3,
+      "17:00": 5,
+      "18:00": 6,
+      "19:00": 7,
+      "20:00": 7,
+      "21:00": 10
+    },
+    "reference_trend_flag_first": "2026-11-21T13:00",
+    "reference_flag_with_message_fusion_first": "2026-11-21T12:00",
+    "n_params_beyond_2_5_robust_z_by_hour": {
+      "10:00": 0,
+      "11:00": 0,
+      "12:00": 2,
+      "13:00": 2,
+      "14:00": 3,
+      "15:00": 3,
+      "16:00": 4,
+      "17:00": 4,
+      "18:00": 5,
+      "19:00": 5,
+      "20:00": 5,
+      "21:00": 5
+    },
+    "baseline_median": {
+      "hr": 79.5,
+      "rr": 16.0,
+      "spo2": 96.0,
+      "temp_c": 37.2,
+      "sbp": 130.0
+    },
+    "baseline_robust_sd": {
+      "hr": 5.19,
+      "rr": 1.0,
+      "spo2": 0.8,
+      "temp_c": 0.15,
+      "sbp": 5.19
+    },
+    "patient_message_first_symptom": "2026-11-21T12:00",
+    "lead_time_hours_trend_vs_news2": 4.0,
+    "lead_time_hours_fused_vs_news2": 5.0
+  },
+  "alert_burden_virtual_ward_84h": {
+    "naive_scale1_alert_readings": 63,
+    "naive_by_patient": {
+      "P-007": 57,
+      "P-002": 5,
+      "P-011": 1
+    },
+    "plan_aware_filtered_alert_readings": 5,
+    "plan_aware_by_patient": {
+      "P-002": 5
+    },
+    "artefact_readings_excluded": [
+      {
+        "patient_id": "P-011",
+        "ts": "2026-11-21T12:00",
+        "spo2": 76,
+        "hr": 113,
+        "signal_quality": 0.22
+      }
+    ]
+  },
+  "reference_trend_flags_per_virtual_ward_patient": {
+    "P-001": 0,
+    "P-002": 9,
+    "P-003": 0,
+    "P-004": 0,
+    "P-005": 0,
+    "P-006": 0,
+    "P-007": 0,
+    "P-008": 0,
+    "P-009": 0,
+    "P-010": 0,
+    "P-011": 0,
+    "P-012": 0,
+    "P-013": 0,
+    "P-014": 0
+  },
+  "inpatient_news2_last24h": {
+    "I-01": {
+      "max": 1,
+      "mean": 0.17
+    },
+    "I-02": {
+      "max": 0,
+      "mean": 0.0
+    },
+    "I-03": {
+      "max": 0,
+      "mean": 0.0
+    },
+    "I-04": {
+      "max": 2,
+      "mean": 1.67
+    },
+    "I-05": {
+      "max": 4,
+      "mean": 4.0
+    },
+    "I-06": {
+      "max": 0,
+      "mean": 0.0
+    },
+    "I-07": {
+      "max": 6,
+      "mean": 5.25
+    },
+    "I-08": {
+      "max": 1,
+      "mean": 0.83
+    },
+    "I-09": {
+      "max": 0,
+      "mean": 0.0
+    },
+    "I-10": {
+      "max": 1,
+      "mean": 0.33
+    },
+    "I-11": {
+      "max": 0,
+      "mean": 0.0
+    },
+    "I-12": {
+      "max": 1,
+      "mean": 0.83
+    }
+  },
+  "inpatient_transfer_risk_score": {
+    "I-01": 0.03,
+    "I-02": 0.0,
+    "I-03": 0.0,
+    "I-04": 0.33,
+    "I-05": 0.8,
+    "I-06": 0.0,
+    "I-07": 1.0,
+    "I-08": 0.17,
+    "I-09": 0.0,
+    "I-10": 0.07,
+    "I-11": 0.0,
+    "I-12": 0.17
+  },
+  "whatif_plus5_reference": {
+    "safety_first": {
+      "objective": 106.3,
+      "patients_needing_placement": 5,
+      "placed": 4,
+      "external_transfers": 1,
+      "transfers_to_virtual_ward": [
+        "I-03",
+        "I-06"
+      ],
+      "stepdowns_to_primary_care": [
+        "P-005"
+      ],
+      "expedite_I02_discharge": false,
+      "overflow_bed_used": false,
+      "overtime_team": true,
+      "uses_kit_from_cleaning_ready_15_00": true,
+      "direct_to_virtual_ward": [
+        "A-03",
+        "A-05"
+      ],
+      "spare_beds_after_plan": 0,
+      "visits_booked": 33,
+      "visit_capacity": 35,
+      "kits_used": 4,
+      "kits_supply": 4,
+      "virtual_slots_used": 17,
+      "requires_clinician_assessment": []
+    },
+    "balanced": {
+      "objective": 21.3,
+      "patients_needing_placement": 5,
+      "placed": 5,
+      "external_transfers": 0,
+      "transfers_to_virtual_ward": [
+        "I-03",
+        "I-06"
+      ],
+      "stepdowns_to_primary_care": [
+        "P-005"
+      ],
+      "expedite_I02_discharge": true,
+      "overflow_bed_used": false,
+      "overtime_team": true,
+      "uses_kit_from_cleaning_ready_15_00": true,
+      "direct_to_virtual_ward": [
+        "A-03",
+        "A-05"
+      ],
+      "spare_beds_after_plan": 0,
+      "visits_booked": 33,
+      "visit_capacity": 35,
+      "kits_used": 4,
+      "kits_supply": 4,
+      "virtual_slots_used": 17,
+      "requires_clinician_assessment": [
+        "EXPEDITE_I-02"
+      ]
+    },
+    "max_capacity": {
+      "objective": -1.15,
+      "patients_needing_placement": 5,
+      "placed": 5,
+      "external_transfers": 0,
+      "transfers_to_virtual_ward": [
+        "I-03",
+        "I-06",
+        "I-10"
+      ],
+      "stepdowns_to_primary_care": [
+        "P-005",
+        "P-009"
+      ],
+      "expedite_I02_discharge": true,
+      "overflow_bed_used": false,
+      "overtime_team": true,
+      "uses_kit_from_cleaning_ready_15_00": true,
+      "direct_to_virtual_ward": [
+        "A-03",
+        "A-05"
+      ],
+      "spare_beds_after_plan": 1,
+      "visits_booked": 32,
+      "visit_capacity": 35,
+      "kits_used": 5,
+      "kits_supply": 5,
+      "virtual_slots_used": 17,
+      "requires_clinician_assessment": [
+        "P-009",
+        "EXPEDITE_I-02"
+      ]
+    }
+  },
+  "whatif_plus5_with_P002_readmission_reference": {
+    "safety_first": {
+      "objective": 107.8,
+      "patients_needing_placement": 6,
+      "placed": 5,
+      "external_transfers": 1,
+      "transfers_to_virtual_ward": [
+        "I-03",
+        "I-06",
+        "I-10"
+      ],
+      "stepdowns_to_primary_care": [
+        "P-005"
+      ],
+      "expedite_I02_discharge": false,
+      "overflow_bed_used": false,
+      "overtime_team": true,
+      "uses_kit_from_cleaning_ready_15_00": true,
+      "direct_to_virtual_ward": [
+        "A-03",
+        "A-05"
+      ],
+      "spare_beds_after_plan": 0,
+      "visits_booked": 32,
+      "visit_capacity": 35,
+      "kits_used": 5,
+      "kits_supply": 5,
+      "virtual_slots_used": 17,
+      "requires_clinician_assessment": []
+    },
+    "balanced": {
+      "objective": 22.1,
+      "patients_needing_placement": 6,
+      "placed": 6,
+      "external_transfers": 0,
+      "transfers_to_virtual_ward": [
+        "I-03",
+        "I-06",
+        "I-10"
+      ],
+      "stepdowns_to_primary_care": [
+        "P-005"
+      ],
+      "expedite_I02_discharge": true,
+      "overflow_bed_used": false,
+      "overtime_team": true,
+      "uses_kit_from_cleaning_ready_15_00": true,
+      "direct_to_virtual_ward": [
+        "A-03",
+        "A-05"
+      ],
+      "spare_beds_after_plan": 0,
+      "visits_booked": 32,
+      "visit_capacity": 35,
+      "kits_used": 5,
+      "kits_supply": 5,
+      "virtual_slots_used": 17,
+      "requires_clinician_assessment": [
+        "EXPEDITE_I-02"
+      ]
+    },
+    "max_capacity": {
+      "objective": -0.2,
+      "patients_needing_placement": 6,
+      "placed": 6,
+      "external_transfers": 0,
+      "transfers_to_virtual_ward": [
+        "I-03",
+        "I-06",
+        "I-08",
+        "I-10"
+      ],
+      "stepdowns_to_primary_care": [
+        "P-005",
+        "P-009"
+      ],
+      "expedite_I02_discharge": true,
+      "overflow_bed_used": false,
+      "overtime_team": true,
+      "uses_kit_from_cleaning_ready_15_00": true,
+      "direct_to_virtual_ward": [
+        "A-03",
+        "A-05"
+      ],
+      "spare_beds_after_plan": 1,
+      "visits_booked": 31,
+      "visit_capacity": 35,
+      "kits_used": 6,
+      "kits_supply": 6,
+      "virtual_slots_used": 17,
+      "requires_clinician_assessment": [
+        "P-009",
+        "EXPEDITE_I-02"
+      ]
+    }
+  },
+  "profile_definitions": {
+    "safety_first": {
+      "max_assess": 0,
+      "allow_overflow": false,
+      "w_external": 100,
+      "w_assess": 0,
+      "w_overflow": 0,
+      "w_overtime": 5,
+      "w_kitdelay": 1,
+      "w_risk": 20,
+      "w_buffer": 0
+    },
+    "balanced": {
+      "max_assess": 1,
+      "allow_overflow": true,
+      "w_external": 100,
+      "w_assess": 15,
+      "w_overflow": 30,
+      "w_overtime": 5,
+      "w_kitdelay": 1,
+      "w_risk": 10,
+      "w_buffer": 2
+    },
+    "max_capacity": {
+      "max_assess": 9,
+      "allow_overflow": true,
+      "w_external": 100,
+      "w_assess": 5,
+      "w_overflow": 10,
+      "w_overtime": 2,
+      "w_kitdelay": 1,
+      "w_risk": 5,
+      "w_buffer": 15
+    }
+  }
+}

@@ -1,0 +1,16 @@
+message_id,patient_id,ts,sender,text,phase
+M-001,P-001,2026-11-20T13:00,patient,What time will the nurse come tomorrow?,history
+M-002,P-004,2026-11-20T18:00,patient,"The pump is making a beeping sound, is that normal?",history
+M-003,P-006,2026-11-20T23:00,patient,Can I take a short walk outside?,history
+M-004,P-010,2026-11-21T01:00,patient,Can I take paracetamol for my headache?,history
+M-005,P-013,2026-11-21T03:00,patient,When do you think I can stop the IV antibiotics?,history
+M-006,P-014,2026-11-21T06:00,patient,"I forgot to send my morning values, sorry. Sending now.",history
+M-007,P-005,2026-11-21T07:00,patient,I feel much better. When can I be discharged?,history
+M-008,P-003,2026-11-21T10:00,patient,"My weight this morning was 81.2 kg, 0.6 kg less than yesterday.",stream
+M-009,P-002,2026-11-21T12:00,patient,Feeling more out of breath than yesterday when I walk to the bathroom. A bit shivery too.,stream
+M-010,P-011,2026-11-21T12:12,patient,"The patch came loose a bit when I showered, I pressed it back.",stream
+M-011,P-012,2026-11-21T13:00,patient,Is it okay to have coffee with my medicines?,stream
+M-012,P-002,2026-11-21T14:00,patient (husband typing),My husband thinks I look pale. Should I be worried?,stream
+M-013,P-009,2026-11-21T15:00,patient,Who will help me with groceries when you stop coming?,stream
+M-014,P-008,2026-11-21T19:00,relative (daughter),Mum seems a bit more confused this evening than usual.,stream
+M-015,P-001,2026-11-21T20:00,patient,Thank you for today!,stream

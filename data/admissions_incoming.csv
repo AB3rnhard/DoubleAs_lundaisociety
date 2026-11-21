@@ -1,0 +1,6 @@
+admission_id,age,sex,working_diagnosis,news2_at_ed,eta,needs_physical_bed,direct_hah_possible,municipality,consent_hospital_at_home,visits_per_day_if_home
+A-01,63,M,Urosepsis,7,2026-11-21T10:00,True,False,Lund,n/a,0
+A-02,70,F,NSTEMI,3,2026-11-21T11:00,True,False,Malmo,n/a,0
+A-03,58,F,Community-acquired pneumonia (CURB-65 = 1),2,2026-11-21T12:00,False,True,Lund,yes,2
+A-04,75,M,COPD exacerbation needing oxygen titration,5,2026-11-21T13:00,True,False,Staffanstorp,n/a,0
+A-05,49,M,"Cellulitis, forearm, needs IV antibiotics",1,2026-11-21T14:00,False,True,Malmo,yes,2
