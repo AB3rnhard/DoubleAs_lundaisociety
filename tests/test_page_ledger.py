@@ -126,3 +126,44 @@ def test_warm_run_under_one_second():
     t = time.perf_counter()
     at.run()
     assert time.perf_counter() - t < 1.0
+
+
+# ---------------------------------------------------------------- sign-off tasks
+def _task(tid="PLAN-x:P-002"):
+    return {"task_id": tid, "type": "signoff", "subject": "P-002", "patient_id": "P-002", "action": "transfer home",
+            "plan_item_id": "PLAN-x", "profile": "balanced", "created_at": T0, "status": "open",
+            "evidence_ids": ["P-002", "E-1"]}
+
+
+def _with_task():
+    at = AppTest.from_file(PAGE, default_timeout=60)
+    at.session_state["clock"] = C15
+    at.session_state["escalated"] = []
+    at.session_state["tasks"] = [_task()]
+    return at.run()
+
+
+def test_signoff_approve_writes_one_row_and_closes_task():
+    at = _with_task()
+    next(b for b in at.button if b.key == "led_ok_PLAN-x:P-002").click().run()
+    assert not at.exception
+    rows = ledger.list_rows(item_type="signoff")
+    assert len(rows) == 1 and rows[0]["clinician_action"] == "approve" and rows[0]["patient_id"] == "P-002"
+    assert rows[0]["evidence_ids"] == ["P-002", "E-1"] and rows[0]["clinician_role"] == "On-call physician"
+    assert at.session_state["tasks"][0]["status"] == "approved"
+    assert not any(b.key == "led_ok_PLAN-x:P-002" for b in at.button)  # no second click possible
+    at.run()
+    assert len(ledger.list_rows(item_type="signoff")) == 1
+    assert {x.label: x.value for x in at.metric}["Sign-offs recorded"] == "1"
+
+
+def test_signoff_reject_needs_reason():
+    at = _with_task()
+    next(b for b in at.button if b.key == "led_no_PLAN-x:P-002").click().run()
+    assert ledger.list_rows() == [] and at.session_state["tasks"][0]["status"] == "open"
+    assert any("reason" in w.value for w in at.warning)
+    at.text_input(key="led_reason_PLAN-x:P-002").set_value("Not safe").run()
+    next(b for b in at.button if b.key == "led_no_PLAN-x:P-002").click().run()
+    row = ledger.list_rows(item_type="signoff")[0]
+    assert row["clinician_action"] == "reject" and row["reason"] == "Not safe"
+    assert at.session_state["tasks"][0]["status"] == "rejected"

@@ -3,6 +3,8 @@ import logging
 
 import streamlit as st
 
+from core import ledger
+from core.contracts import Decision
 from ops import kpis, ledger_view
 
 logger = logging.getLogger(__name__)
@@ -58,3 +60,30 @@ else:
         except (TypeError, ValueError):
             st.write((r["ai_suggestion"] or "").replace("$", "\\$"))
         st.markdown(" ".join(f":gray-badge[{e}]" for e in r["evidence_ids"]) or "No evidence ids.")
+
+open_tasks = [t for t in st.session_state["tasks"] if t.get("status") == "open"]
+with st.expander(f"Sign-off tasks ({len(open_tasks)} open)", expanded=bool(open_tasks)):
+    if not open_tasks:
+        st.caption("No open sign-off tasks. Adopting a plan on Capacity & What-if creates them.")
+    done_ids = {r["item_id"] for r in rows if r["item_type"] == "signoff"}
+    for t in open_tasks:
+        tid = t["task_id"]
+        st.markdown(f":orange-badge[Sign-off] **{t['patient_id']}**: {t['action']} (plan {t['plan_item_id']})")
+        reason = st.text_input("Reason (required to reject)", key=f"led_reason_{tid}")
+        a, r = st.columns(2)
+        verdict = "approve" if a.button("Approve", key=f"led_ok_{tid}") else (
+            "reject" if r.button("Reject", key=f"led_no_{tid}") else None)
+        if verdict == "reject" and not reason.strip():
+            st.warning("Give a reason to reject.")
+        elif verdict:
+            if tid not in done_ids:
+                ledger.record(Decision(
+                    ts=clock, patient_id=t["patient_id"], item_type="signoff", item_id=tid,
+                    ai_suggestion=f"Sign-off requested by plan {t['plan_item_id']}", clinician_action=verdict,
+                    clinician_role="On-call physician", reason=reason.strip() or "Approved",
+                    evidence_ids=list(t.get("evidence_ids", []))))
+            status = "approved" if verdict == "approve" else "rejected"
+            st.session_state["tasks"] = [{**x, "status": status} if x["task_id"] == tid else x
+                                         for x in st.session_state["tasks"]]
+            logger.info("sign-off %s: %s", tid, verdict)
+            st.rerun()
