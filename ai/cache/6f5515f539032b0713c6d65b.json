@@ -1,0 +1,15 @@
+{
+  "cache_key": "triage_v1|M-002|423f82a137c1|retry",
+  "model": "claude-haiku-5-5",
+  "prompt_version": "triage_v1",
+  "created_at": "2026-11-21T15:30:10",
+  "response": {
+    "category": "device_issue",
+    "urgency": "within_1h",
+    "symptom_terms": [
+      "beeping sound"
+    ],
+    "needs_clinician": true,
+    "draft_reply": "Thank you for letting us know about the beeping from your pump. A nurse will call you shortly to check on it with you."
+  }
+}

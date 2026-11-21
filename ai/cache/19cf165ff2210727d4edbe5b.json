@@ -1,0 +1,13 @@
+{
+  "cache_key": "triage_v1|M-002|423f82a137c1",
+  "model": "claude-haiku-5-5",
+  "prompt_version": "triage_v1",
+  "created_at": "2026-11-21T15:30:08",
+  "response": {
+    "category": "device_issue",
+    "urgency": "within_1h",
+    "symptom_terms": [],
+    "needs_clinician": false,
+    "draft_reply": "Thank you for letting us know about the beeping. A nurse will look into this and contact you shortly. Please keep the pump where it is and do not change any settings until the nurse has spoken with you."
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "cache_key": "briefing_v1|claude-haiku-5-5|P-004|2026-11-21T09:00|3c805764341f",
+  "model": "claude-haiku-5-5",
+  "prompt_version": "briefing_v1",
+  "created_at": "2026-11-21T15:32:25",
+  "response": {
+    "headline": "Stable day 2 cellulitis patient; all vitals within plan, NEWS2 0 now.",
+    "status": "routine",
+    "summary_points": [
+      {
+        "text": "Anders Berg, 81 M, left lower leg cellulitis on IV cloxacillin via portable pump, day 2 of virtual-ward stay.",
+        "evidence_ids": [
+          "F1"
+        ]
+      },
+      {
+        "text": "NEWS2 is 0 at 09:00 with no active queue flags.",
+        "evidence_ids": [
+          "F10",
+          "F11"
+        ]
+      },
+      {
+        "text": "Last six hours of good readings show NEWS2 of 0 apart from 1 at 04:00.",
+        "evidence_ids": [
+          "F12"
+        ]
+      },
+      {
+        "text": "Home visit on 2026-11-20 recorded vitals within plan, patient comfortable, eating and drinking, no new concerns.",
+        "evidence_ids": [
+          "N-015"
+        ]
+      },
+      {
+        "text": "Patient messaged that the pump is beeping and asked whether this is normal; no reply is recorded.",
+        "evidence_ids": [
+          "M-002"
+        ]
+      }
+    ],
+    "changes_vs_baseline": [
+      {
+        "parameter": "hr",
+        "baseline": "75 at 04:00",
+        "current": "82 at 09:00",
+        "evidence_ids": [
+          "F13",
+          "F18"
+        ]
+      },
+      {
+        "parameter": "spo2",
+        "baseline": "95 at 04:00",
+        "current": "96 at 09:00",
+        "evidence_ids": [
+          "F13",
+          "F18"
+        ]
+      },
+      {
+        "parameter": "rr",
+        "baseline": "16 at 04:00",
+        "current": "17 at 09:00",
+        "evidence_ids": [
+          "F13",
+          "F18"
+        ]
+      },
+      {
+        "parameter": "sbp",
+        "baseline": "133 at 04:00",
+        "current": "138 at 09:00",
+        "evidence_ids": [
+          "F13",
+          "F18"
+        ]
+      },
+      {
+        "parameter": "temp_c",
+        "baseline": "37.2 at 04:00",
+        "current": "37.1 at 09:00",
+        "evidence_ids": [
+          "F13",
+          "F18"
+        ]
+      },
+      {
+        "parameter": "consciousness",
+        "baseline": "A at 04:00",
+        "current": "A at 09:00",
+        "evidence_ids": [
+          "F13",
+          "F18"
+        ]
+      }
+    ],
+    "plan_rules": [
+      {
+        "rule": "SpO2 target range 94-100",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F2",
+          "F18"
+        ]
+      },
+      {
+        "rule": "HR range 50-110",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F3",
+          "F18"
+        ]
+      },
+      {
+        "rule": "RR high limit 22",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F4",
+          "F18"
+        ]
+      },
+      {
+        "rule": "SBP low limit 100",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F5",
+          "F18"
+        ]
+      },
+      {
+        "rule": "Temp high limit 38.0",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F6",
+          "F18"
+        ]
+      },
+      {
+        "rule": "NEWS2 urgent threshold 5 or any single parameter scoring 3",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F7",
+          "F11"
+        ]
+      },
+      {
+        "rule": "NEWS2 emergency threshold 7",
+        "state": "not_triggered",
+        "evidence_ids": [
+          "F8",
+          "F11"
+        ]
+      }
+    ],
+    "relevant_history": [
+      {
+        "text": "Comorbidities include type 2 diabetes and venous insufficiency; lives with wife as caregiver, not alone.",
+        "evidence_ids": [
+          "F1"
+        ]
+      },
+      {
+        "text": "Visits per day: 2.",
+        "evidence_ids": [
+          "F1"
+        ]
+      }
+    ],
+    "suggested_actions": [
+      {
+        "action": "Consider contacting the patient to answer the pump beeping question and confirm the pump is running correctly.",
+        "rationale": "Patient asked on 2026-11-20 at 18:00 and no reply is recorded.",
+        "evidence_ids": [
+          "M-002"
+        ]
+      },
+      {
+        "action": "Consider confirming the IV line and pump are functioning at the next visit.",
+        "rationale": "Pump alarm query is unresolved in the record.",
+        "evidence_ids": [
+          "M-002",
+          "F1"
+        ]
+      }
+    ],
+    "missing_information": [
+      "Reply to patient's pump beeping message",
+      "Latest blood results or inflammatory markers",
+      "Whether the patient is on oxygen at home (recorded as no in vitals)",
+      "Wound or cellulitis progression assessment since home visit",
+      "Pump alarm cause and whether IV therapy was interrupted"
+    ]
+  }
+}

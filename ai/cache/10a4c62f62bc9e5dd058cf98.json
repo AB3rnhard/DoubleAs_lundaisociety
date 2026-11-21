@@ -1,0 +1,15 @@
+{
+  "cache_key": "triage_v1|M-004|3d942271f2ba",
+  "model": "claude-haiku-5-5",
+  "prompt_version": "triage_v1",
+  "created_at": "2026-11-21T15:30:05",
+  "response": {
+    "category": "medication_question",
+    "urgency": "today",
+    "symptom_terms": [
+      "headache"
+    ],
+    "needs_clinician": true,
+    "draft_reply": "Thank you for your message. A nurse will review your question and call you shortly to discuss your headache and what is safe for you."
+  }
+}
