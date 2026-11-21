@@ -22,7 +22,8 @@ Teammate A (feat/clinical): clinical/*, ai/factsheet.py, ai/verifier.py, ai/tria
 Teammate B (feat/ops): ops/*, core/ledger.py, ai/explainer.py, pages/3_Capacity_WhatIf.py,
   pages/4_Ledger.py, tests for those.
 Shared (change only in a separate commit "contracts: ..." after both agree): core/contracts.py,
-  core/loader.py, ai/claude_client.py, app.py, CLAUDE.md, requirements.txt, pyproject.toml.
+  core/loader.py, ai/claude_client.py, app.py, CLAUDE.md, requirements.txt, pyproject.toml,
+  changes_from_baseline.md (append a dated line or section for each deviation from the planning docs).
 ai/schemas.py and ai/prompts/: append-only; each owner adds their own schema / prompt file.
 
 ## Interfaces (core/contracts.py is the single source of truth)
