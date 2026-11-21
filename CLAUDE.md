@@ -13,8 +13,9 @@ plotly, ortools CP-SAT, anthropic, python-dotenv, sqlite3, pytest, ruff.
 No new dependencies without asking.
 
 ## Branches
-main = integration branch (humans merge). Teammate A works on feat/clinical, Teammate B on
-feat/ops, both branched from main. Claude never pushes, force-pushes or merges.
+main = integration branch. Teammate A works on feat/clinical, Teammate B on feat/ops, both
+branched from main. Claude may pull, push and merge when the user asks for it in that session.
+Claude never force-pushes and never rewrites published history.
 
 ## Ownership (do not edit files you do not own; ask instead)
 Teammate A (feat/clinical): clinical/*, ai/factsheet.py, ai/verifier.py, ai/triage.py,
