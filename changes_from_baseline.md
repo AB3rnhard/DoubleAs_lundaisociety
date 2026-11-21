@@ -80,3 +80,19 @@ Date: 21 Nov 2026. Scope so far: base files (Manual section 2.2, with content fr
 - `requirements.txt` and `.env.example` content.
 - CI workflow (`.github/workflows/test.yml`) content.
 - Data files: copied byte-for-byte, never edited.
+
+## 7. Deviations found while building B1 (ops/eligibility, ops/capacity)
+
+| Area | Prompt said | Actual | Why |
+|---|---|---|---|
+| Branch | "We are on main", create `feat/ops` | Repo was on `branchB`; `feat/ops` created from it (same commit as `main`) | Local branch name differed |
+| NEWS2 source | `clinical.news2` (A1) | `ops/_news2.py` temporary fallback (`score`, `score_df`) plus `resolve_score_df()`, which prefers `clinical.news2.score_df` and logs which one it used | `clinical/news2.py` is still a stub. Remove the fallback after the 12:45 merge once tests pass with A's version |
+| `eligibility.transfer_risk` | `transfer_risk(vitals_scored, clock)` | Extra optional `patients` argument | Lets `capacity.py` avoid reloading `patients.csv` |
+| `eligibility.load_scored(clock)` | Not specified | Helper returning (patients, scored vitals, plans, notes) up to `clock` | Shared by the `__main__` blocks and tests; B2/B3 can reuse it |
+| Capacity cross-check | "warn if slots differ" | Warning logged if `resources.json` virtual-ward `occupied` differs from the VIRTUAL_WARD row count in `patients.csv`; at T0 they agree (14) | As specified |
+| No-patient-specific-logic test | Regex finds no `"P-/I-/A-` + digit in the source | Regex applied to the source before the `if __name__ == "__main__"` block | The `__main__` demo uses `escalated=["P-002"]` as the prompt required |
+| Rule-vs-data conflicts | Ask before special-casing | None: all 12 inpatients match `hah_status`; step-down set is exactly P-005 and P-009 | Rules reproduced the data as written |
+
+Contract expected from A's `clinical.news2.score_df(vitals, plans)`: input columns
+`patient_id, ts, hr, spo2, rr, sbp, temp_c, consciousness, on_oxygen, signal_quality` and plan columns
+`patient_id, spo2_scale`; output = same rows plus int columns `news2` and `news2_max_single`.
